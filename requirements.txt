@@ -2,7 +2,7 @@ backports.zoneinfo==0.2.1;python_version<"3.9"
 discord.py==2.0.1
 Flask==2.2.2
 gunicorn==20.1.0
-git+https://github.com/radiosmersh/opengsq.git
+git+https://github.com/radiosmersh/opengsq-python.git
 psycopg2-binary==2.9.4
 python-dotenv==0.21.0
 pywin32>=305;platform_system=="Windows"
