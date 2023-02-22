@@ -1,7 +1,7 @@
 import asyncio
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Dict, List, Optional
 
@@ -57,6 +57,9 @@ async def on_ready():
     Logger.info(f'Add to Server: {invite_link}')
     Logger.info('Thank you for using Game Server Monitor, you may consider sponsoring us ♥.')
     Logger.info('Github Sponsors: https://github.com/sponsors/DiscordGSM')
+
+    if not public and not whitelist_guilds:
+        Logger.warning('Environment variable WHITELIST_GUILDS is empty! Please set the environment variable.')
 
     await sync_commands(whitelist_guilds)
     await tasks_fetch_messages()
@@ -192,7 +195,8 @@ def alert_embed(server: Server, alert: Alert):
     style.add_game_field(embed)
     style.add_address_field(embed)
 
-    query_time = datetime.now(tz=tz(server.style_data.get('timezone', 'Etc/UTC'))).strftime('%Y-%m-%d %I:%M:%S%p')
+    time_format = '%Y-%m-%d %I:%M:%S%p' if int(server.style_data.get('clock_format', '12')) == 12 else '%Y-%m-%d %H:%M:%S'
+    query_time = datetime.now(tz=tz(server.style_data.get('timezone', 'Etc/UTC'))).strftime(time_format)
     query_time = t('embed.alert.footer.query_time', locale).format(query_time=query_time)
     icon_url = 'https://avatars.githubusercontent.com/u/61296017'
     embed.set_footer(text=f'DiscordGSM {__version__} | {query_time}', icon_url=icon_url)
@@ -245,6 +249,9 @@ def query_server_modal(game: GamedigGame, locale: Locale):
     elif game['id'] == 'terraria':
         query_extra['_token'] = TextInput(label='REST user token')
         modal.add_item(query_extra['_token'])
+    elif game['id'] == 'gportal':
+        query_extra['serverId'] = TextInput(label='GPORTAL server id')
+        modal.add_item(query_extra['serverId'])
 
     if game['id'] == 'discord':
         query_param['host'].label = t('modal.text_input.guild_id.label', locale)
@@ -314,12 +321,35 @@ def query_server_modal_handler(interaction: Interaction, game: GamedigGame, is_a
             if await resend_channel_messages(interaction):
                 await interaction.delete_original_response()
         else:
+            # Reactivate disabled server
+            database.update_servers([server])
+
             content = t('function.query_server_modal.success', interaction.locale)
             await interaction.followup.send(content, embed=style.embed())
 
     modal.on_submit = modal_on_submit
 
     return modal
+
+
+@tree.command(name='sponsor', description='Sponsor to DiscordGSM', guilds=whitelist_guilds)
+async def command_sponsor(interaction: Interaction):
+    """Sponsor to DiscordGSM"""
+    Logger.command(interaction)
+
+    title = 'DiscordGSM/GameServerMonitor'
+    description = \
+    """
+    Thank you for considering a DiscordGSM sponsorship!
+
+    DiscordGSM is a free and open-source solution to your discord server monitoring your game servers on Discord and tracking the live data of your game servers.
+
+    Your sponsorship helps us keep a team of maintainers actively working to improve DiscordGSM and ensure it stays up-to-date with the latest Discord changes.
+    """
+    embed = Embed(title=title, description=description, color=discord.Color.from_rgb(88, 101, 242))
+    embed.add_field(name='❤️ Github Sponsor', value='https://github.com/sponsors/DiscordGSM')
+    embed.add_field(name='⭐ Give us a star on Github', value='https://discordgsm.com/github')
+    await interaction.response.send_message(embed=embed)
 
 
 @tree.command(name='queryserver', description='command.queryserver.description', guilds=whitelist_guilds)
@@ -875,9 +905,10 @@ async def to_chunks(lst, n):
 async def tasks_query():
     """Query servers (Scheduled)"""
     distinct_servers = database.distinct_servers()
-    Logger.debug(f'Query servers: Tasks = {len(distinct_servers)} unique servers')
+    tasks = filtered_tasks(distinct_servers)
+    disabled = len(distinct_servers) - len(tasks)
+    Logger.debug(f'Query servers: Tasks = {len(tasks)} servers. {disabled} servers are disabled for queries.')
 
-    tasks = [query_server(server) for server in distinct_servers]
     servers: List[Server] = []
 
     async for chunks in to_chunks(tasks, int(os.getenv('TASK_QUERY_CHUNK_SIZE', '50'))):
@@ -887,10 +918,30 @@ async def tasks_query():
 
     failed = sum(server.status is False for server in servers)
     success = len(servers) - failed
-    Logger.info(f'Query servers: Total = {len(servers)}, Success = {success}, Failed = {failed} ({len(servers) > 0 and int(failed / len(servers) * 100) or 0}% fail)')
+    percent = len(servers) > 0 and int(failed / len(servers) * 100) or 0
+    Logger.info(f'Query servers: Total = {len(servers)}, Success = {success}, Failed = {failed} ({percent}% fail) ({disabled} disabled)')
 
     # Run the tasks after the server queries
     await asyncio.gather(tasks_send_alert(), tasks_edit_messages(), tasks_presence_update(tasks_query.current_loop))
+
+
+def filtered_tasks(servers: List[Server]):
+    days = int(os.getenv('TASK_QUERY_DISABLE_AFTER_DAYS', '0'))
+
+    if days <= 0:
+        return [query_server(server) for server in servers]
+
+    tasks = []
+
+    for server in servers:
+        raw = server.result.get('raw', {})
+
+        if '__offline_since' in raw and datetime.utcnow().timestamp() - int(raw['__offline_since']) >= timedelta(days=days).total_seconds():
+            continue
+
+        tasks.append(query_server(server))
+
+    return tasks
 
 
 async def query_server(server: Server):
@@ -905,8 +956,8 @@ async def query_server(server: Server):
         server.status = False
         raw = server.result.get('raw', {})
         server.result['raw']['__fail_query_count'] = int(raw.get('__fail_query_count', '0')) + 1
-        offline_since = int(datetime.utcnow().timestamp())
-        server.result['raw']['__offline_since'] = min(int(raw.get('__offline_since', offline_since)), offline_since)
+        timestamp = int(datetime.utcnow().timestamp())
+        server.result['raw']['__offline_since'] = min(int(raw.get('__offline_since', timestamp)), timestamp)
         Logger.debug(f'Query servers: ({server.game_id})[{server.address}:{server.query_port}] Error: {e}')
 
     return server

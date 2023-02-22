@@ -32,22 +32,21 @@ class Source(Protocol):
             'name': info['Name'],
             'map': info['Map'],
             'password': info['Visibility'] != 0,
+            'numplayers': info['Players'],
+            'numbots': info['Bots'],
             'maxplayers': info['MaxPlayers'],
             'players': [{'name': player['Name'], 'raw': {'score': player['Score'], 'time': player['Duration']}} for player in players],
             'bots': [{'name': bot['Name'], 'raw': {'score': bot['Score'], 'time': bot['Duration']}} for bot in bots],
             'connect': f"{self.address}:{info.get('GamePort', self.query_port)}",
             'ping': ping,
-            'raw': {
-                'numplayers': info['Players'],
-                'numbots': info['Bots']
-            }
+            'raw': info
         }
 
         if tags := info.get('Keywords'):
             result['raw']['tags'] = str(tags).split(',')
 
         if info.get('GameID') == 629760:  # mordhau
-            result['raw']['numplayers'] = int(next((tag[2:] for tag in result['raw']['tags'] if tag[:2] == 'B:'), '0'))
+            result['numplayers'] = int(next((tag[2:] for tag in result['raw']['tags'] if tag[:2] == 'B:'), '0'))
         elif info.get('GameID') == 252490:  # rust
             result['maxplayers'] = int(next((tag[2:] for tag in result['raw']['tags'] if tag[:2] == 'mp'), result['maxplayers']))
 

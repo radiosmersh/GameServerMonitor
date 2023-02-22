@@ -75,6 +75,9 @@ class Style(ABC):
         game = gamedig.find(self.server.game_id)
         style_data = {'fullname': game['fullname'], 'locale': locale.value if locale else 'en-US'}
 
+        if self.server.game_id == 'gportal' and (key := self.server.result["raw"].get('key', None)):
+            style_data['fullname'] += f' ({key})'
+
         if self.server.game_id == 'discord' and self.server.result['connect']:
             style_data['description'] = t('embed.description.instant_invite', self.locale).format(url=self.server.result['connect'])
         elif gamedig.default_port(self.server.game_id) == 27015 and gamedig.game_port(self.server.result) == int(self.server.query_port):
@@ -141,10 +144,28 @@ class Style(ABC):
         icon_url = 'https://avatars.githubusercontent.com/u/61296017'
         embed.set_footer(text=f'DiscordGSM {__version__} | {advertisement} | {last_update}', icon_url=icon_url)
 
+    def set_image_and_thumbnail(self, embed: Embed):
+        image_url = self.server.style_data.get('image_url', '')
+        thumbnail_url = self.server.style_data.get('thumbnail_url', '')
+
+        if image_url.startswith('http://') or image_url.startswith('https://'):
+            embed.set_image(url=image_url)
+
+        if thumbnail_url.startswith('http://') or thumbnail_url.startswith('https://'):
+            embed.set_thumbnail(url=thumbnail_url)
+
     @staticmethod
     def get_players_display_string(server: Server):
-        players = int(server.result.get('raw', {}).get('numplayers', len(server.result['players'])))
-        bots = int(server.result.get('raw', {}).get('numbots', len(server.result['bots'])))
+        if 'numplayers' in server.result:
+            players = int(server.result['numplayers'])
+        else:
+            players = int(server.result.get('raw', {}).get('numplayers', len(server.result['players'])))
+
+        if 'numbots' in server.result:
+            bots = int(server.result['numbots'])
+        else:
+            bots = int(server.result.get('raw', {}).get('numbots', len(server.result['bots'])))
+
         players_string = str(players)  # example: 20
 
         if bots > 0:
