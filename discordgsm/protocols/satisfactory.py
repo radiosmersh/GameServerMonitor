@@ -9,26 +9,26 @@ if TYPE_CHECKING:
     from discordgsm.gamedig import GamedigResult
 
 
-class Raknet(Protocol):
-    name = 'raknet'
+class Satisfactory(Protocol):
+    name = 'satisfactory'
 
     async def query(self):
         host, port = str(self.kv['host']), int(str(self.kv['port']))
-        raknet = opengsq.Raknet(host, port, self.timeout)
+        satisfactory = opengsq.Satisfactory(host, port, self.timeout)
         start = time.time()
-        status = await raknet.get_status()
+        status = await satisfactory.get_status()
         ping = int((time.time() - start) * 1000)
 
         result: GamedigResult = {
-            'name': status.get('motd_line_1', ''),
-            'map': status.get('motd_line_2', ''),
+            'name': '',
+            'map': '',
             'password': False,
-            'numplayers': int(status.get('num_players', '')),
+            'numplayers': 0,
             'numbots': 0,
-            'maxplayers': int(status.get('max_players', '')),
+            'maxplayers': 0,
             'players': [],
             'bots': [],
-            'connect': f"{host}:{status.get('port_ipv4', port)}",
+            'connect': f'{host}:{port}',
             'ping': ping,
             'raw': status
         }

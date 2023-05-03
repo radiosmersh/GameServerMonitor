@@ -1,9 +1,10 @@
 # Discord Game Server Monitor
-[![Discord Shield](https://discordapp.com/api/guilds/680159496584429582/widget.png?style=shield)](https://discordgsm.com/discord)
-[![GitHub license](https://img.shields.io/github/license/DiscordGSM/GameServerMonitor)](https://github.com/DiscordGSM/GameServerMonitor/blob/main/LICENSE)
-[![GitHub release](https://img.shields.io/github/release/DiscordGSM/GameServerMonitor)](https://github.com/DiscordGSM/GameServerMonitor/releases/)
 [![Python Package](https://github.com/DiscordGSM/GameServerMonitor/actions/workflows/python-package.yml/badge.svg)](https://github.com/DiscordGSM/GameServerMonitor/actions/workflows/python-package.yml)
 [![Docker Image](https://github.com/DiscordGSM/GameServerMonitor/actions/workflows/docker-image.yml/badge.svg)](https://github.com/DiscordGSM/GameServerMonitor/actions/workflows/docker-image.yml)
+[![Discord Shield](https://discordapp.com/api/guilds/680159496584429582/widget.png?style=shield)](https://discordgsm.com/discord)
+[![Docker Pulls](https://img.shields.io/docker/pulls/discordgsm/discord-game-server-monitor.svg)](https://hub.docker.com/r/discordgsm/discord-game-server-monitor)
+[![GitHub release](https://img.shields.io/github/release/DiscordGSM/GameServerMonitor)](https://github.com/DiscordGSM/GameServerMonitor/releases/)
+[![GitHub license](https://img.shields.io/github/license/DiscordGSM/GameServerMonitor)](https://github.com/DiscordGSM/GameServerMonitor/blob/main/LICENSE)
 
 📺 A discord bot that monitors your game server and tracks the live data of your game servers.
 
@@ -57,7 +58,7 @@ Feel free to contribute! Learn more: [Contributor's Guide: Adding Translations](
 | <img src="https://discordgsm.com/images/flags/cs.png" width=20 /> Czech | Čeština | ❌ | [cs.json](/discordgsm/translations/cs.json) |  |
 | <img src="https://discordgsm.com/images/flags/el.png" width=20 /> Greek | Ελληνικά | ❌ | [el.json](/discordgsm/translations/el.json) |  |
 | <img src="https://discordgsm.com/images/flags/bg.png" width=20 /> Bulgarian | български | ❌ | [bg.json](/discordgsm/translations/bg.json) |  |
-| <img src="https://discordgsm.com/images/flags/ru.png" width=20 /> Russian | Pусский | ✔️ | [ru.json](/discordgsm/translations/ru.json) | [@K-Faktor](https://github.com/K-Faktor) |
+| <img src="https://discordgsm.com/images/flags/ru.png" width=20 /> Russian | Pусский | ✔️ | [ru.json](/discordgsm/translations/ru.json) | [@K-Faktor](https://github.com/K-Faktor), [@Satton2](https://github.com/Satton2) |
 | <img src="https://discordgsm.com/images/flags/uk.png" width=20 /> Ukrainian | Українська | ✔️ | [uk.json](/discordgsm/translations/uk.json) | [@only1avetrill](https://github.com/only1avetrill) |
 | <img src="https://discordgsm.com/images/flags/hi.png" width=20 /> Hindi | हिन्दी | ❌ | [hi.json](/discordgsm/translations/hi.json) |  |
 | <img src="https://discordgsm.com/images/flags/th.png" width=20 /> Thai | ไทย | ❌ | [th.json](/discordgsm/translations/th.json) |  |

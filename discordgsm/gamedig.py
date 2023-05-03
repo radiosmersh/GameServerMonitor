@@ -9,7 +9,8 @@ from typing import List, TypedDict
 if __name__ == '__main__':
     from server import Server
 else:
-    from discordgsm.protocols import Protocols
+    from discordgsm.environment import env
+    from discordgsm.protocols import protocols
     from discordgsm.server import Server
 
 
@@ -126,15 +127,15 @@ class Gamedig:
         }, **server.query_extra})
 
     async def run(self, kv: dict):
-        if protocol := Protocols.get(self.games[kv['type']]['protocol'], kv):
-            return await asyncio.wait_for(protocol.query(), timeout=float(os.getenv('TASK_QUERY_SERVER_TIMEOUT', '15')))
+        if protocol := protocols.get(self.games[kv['type']]['protocol']):
+            return await asyncio.wait_for(protocol(kv).query(), timeout=env('TASK_QUERY_SERVER_TIMEOUT'))
 
         raise Exception('No protocol supported')
 
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    subparsers = parser.add_subparsers(dest='subparser_name')
+    subparsers = parser.add_subparsers(dest='choice')
     subparsers.add_parser('sort', description='Sort the games.csv')
 
     args = parser.parse_args()
@@ -143,17 +144,21 @@ if __name__ == '__main__':
         parser.print_help(sys.stderr)
         sys.exit(-1)
 
-    if args.subparser_name == 'sort':
+    if args.choice == 'sort':
         gamedig = Gamedig()
         games = OrderedDict(sorted(gamedig.games.items()))
 
         with open(os.path.join(gamedig.path, 'games.csv'), 'w', encoding='utf8') as f:
-            f.write('Id, Name, Protocol, Options\n')
+            f.write('Id,Name,Protocol,Options\n')
             first_char = ''
 
             for game_id, game in games.items():
+                game_id = game_id.strip()
+
                 if first_char != game_id[0] and (first_char := game_id[0]):
                     f.write('\n')
 
-                options = ';'.join([f'{k}={v}' for k, v in game['options'].items()])
-                f.write(f"{game_id},{game['fullname']},{game['protocol']},{options}\n")
+                options = ';'.join([f'{str(k).strip()}={str(v).strip()}' for k, v in game['options'].items()])
+                f.write(f"{game_id},{game['fullname'].strip()},{game['protocol'].strip()},{options}\n")
+
+        print('Sorted games.csv.')

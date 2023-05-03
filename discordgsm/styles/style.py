@@ -100,12 +100,17 @@ class Style(ABC):
         raise NotImplementedError()
 
     def embed_data(self):
-        title = (self.server.result['password'] and ':lock: ' or '') + self.server.result['name']
+        title = (self.server.result['password'] and '🔒 ' or '') + self.server.result['name']
         description = str(self.server.style_data.get('description', '')).strip()
         description = description if description else None
         color = Color.from_rgb(88, 101, 242) if self.server.status else Color.from_rgb(32, 34, 37)
 
         return title, description, color
+
+    def add_status_field(self, embed: Embed):
+        name = t('embed.field.status.name', self.locale)
+        value = t(f'embed.field.status.value.{"online" if self.server.status else "offline"}', self.locale)
+        embed.add_field(name=name, value=value, inline=True)
 
     def add_address_field(self, embed: Embed):
         game_port = gamedig.game_port(self.server.result)
@@ -156,22 +161,31 @@ class Style(ABC):
 
     @staticmethod
     def get_players_display_string(server: Server):
+        players, bots, maxplayers = Style.get_player_data(server)
+        return Style.to_players_string(players, bots, maxplayers)
+
+    @staticmethod
+    def get_player_data(server: Server):
         if 'numplayers' in server.result:
-            players = int(server.result['numplayers'])
+            players = int(server.result.get('numplayers', 0))
         else:
             players = int(server.result.get('raw', {}).get('numplayers', len(server.result['players'])))
 
         if 'numbots' in server.result:
-            bots = int(server.result['numbots'])
+            bots = int(server.result.get('numbots', 0))
         else:
             bots = int(server.result.get('raw', {}).get('numbots', len(server.result['bots'])))
 
+        maxplayers = int(server.result.get('maxplayers', 0))
+
+        return players, bots, maxplayers
+
+    @staticmethod
+    def to_players_string(players: int, bots: int, maxplayers: int):
         players_string = str(players)  # example: 20
 
         if bots > 0:
             players_string += f' ({bots})'  # example: 20 (2)
-
-        maxplayers = int(server.result['maxplayers'])
 
         if maxplayers > 0:
             percentage = 0 if maxplayers <= 0 else int(players / maxplayers * 100)

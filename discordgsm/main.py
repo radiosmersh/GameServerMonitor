@@ -7,18 +7,20 @@ from typing import Dict, List, Optional
 
 import aiohttp
 import discord
-from discord import (ActivityType, AutoShardedClient, ButtonStyle, Client,
-                     Embed, Interaction, Locale, Message, SelectOption,
-                     Webhook, app_commands)
+from discord import (AutoShardedClient, ButtonStyle, Client, Embed,
+                     Interaction, Locale, Message, SelectOption, Webhook,
+                     app_commands)
 from discord.ext import tasks
 from discord.ui import Button, Modal, Select, TextInput, View
 from dotenv import load_dotenv
 
+from discordgsm.environment import AdvertiseType, env
 from discordgsm.gamedig import GamedigGame
 from discordgsm.logger import Logger
+from discordgsm.protocols import Protocol, protocols
 from discordgsm.server import Server
 from discordgsm.service import (database, gamedig, invite_link, public,
-                                timezones, tz, whitelist_guilds)
+                                server_limit, timezones, tz, whitelist_guilds)
 from discordgsm.styles import Style, Styles
 from discordgsm.translator import Translator, t
 from discordgsm.version import __version__
@@ -51,12 +53,9 @@ async def on_ready():
     """Called when the client is done preparing the data received from Discord."""
     await client.wait_until_ready()
 
-    Logger.info(f'Starting Game Server Monitor {__version__}')
     Logger.info(f'Connected to {database.type} database')
     Logger.info(f'Logged on as {client.user}')
     Logger.info(f'Add to Server: {invite_link}')
-    Logger.info('Thank you for using Game Server Monitor, you may consider sponsoring us ♥.')
-    Logger.info('Github Sponsors: https://github.com/sponsors/DiscordGSM')
 
     if not public and not whitelist_guilds:
         Logger.warning('Environment variable WHITELIST_GUILDS is empty! Please set the environment variable.')
@@ -67,10 +66,10 @@ async def on_ready():
     if not tasks_query.is_running():
         tasks_query.start()
 
-    if not cache_guilds.is_running() and os.getenv('WEB_API_ENABLE', '').lower() == 'true':
+    if not cache_guilds.is_running() and env('WEB_API_ENABLE'):
         cache_guilds.start()
 
-    if not heroku_query.is_running() and os.getenv('HEROKU_APP_NAME') is not None:
+    if not heroku_query.is_running() and env('HEROKU_APP_NAME'):
         heroku_query.start()
 
 
@@ -146,9 +145,9 @@ def is_administrator(interaction: Interaction) -> bool:
     return interaction.user.guild_permissions.administrator
 
 
-def custom_command_query_check(interaction: Interaction) -> bool:
-    """Query command check"""
-    if os.getenv('COMMAND_QUERY_PUBLIC', '').lower() == 'true':
+def custom_command_queryserver_check(interaction: Interaction) -> bool:
+    """Query server command check"""
+    if env('COMMAND_QUERY_PUBLIC'):
         return True
 
     return is_administrator(interaction)
@@ -159,7 +158,7 @@ def cooldown_for_everyone_except_administrator(interaction: Interaction) -> Opti
     if is_administrator(interaction):
         return None
 
-    return app_commands.Cooldown(1, float(os.getenv('COMMAND_QUERY_COOLDOWN', '5')))
+    return app_commands.Cooldown(1, env('COMMAND_QUERY_COOLDOWN'))
 # endregion
 
 
@@ -176,7 +175,7 @@ class Alert(Enum):
 def alert_embed(server: Server, alert: Alert):
     """Returns alert embed"""
     locale = str(server.style_data.get('locale', 'en-US'))
-    title = (server.result['password'] and ':lock: ' or '') + server.result['name']
+    title = (server.result['password'] and '🔒 ' or '') + server.result['name']
 
     if alert == Alert.TEST:
         description = t('embed.alert.description.test', locale)
@@ -298,7 +297,7 @@ def query_server_modal_handler(interaction: Interaction, game: GamedigGame, is_a
         except Exception as e:
             content = t('function.query_server_modal.fail_to_query', interaction.locale).format(game_id=game_id, address=address, query_port=query_port)
             await interaction.followup.send(content, ephemeral=True)
-            Logger.debug(f'Query servers: ({game_id})[{address}:{query_port}] Error: {e}')
+            Logger.debug(f'Query servers: ({game_id})[{address}:{query_port}] {type(e).__name__}: {e}')
             return
 
         # Create new server object
@@ -355,9 +354,9 @@ async def command_sponsor(interaction: Interaction):
 @tree.command(name='queryserver', description='command.queryserver.description', guilds=whitelist_guilds)
 @app_commands.guild_only()
 @app_commands.describe(game_id='command.option.game_id')
-@app_commands.check(custom_command_query_check)
+@app_commands.check(custom_command_queryserver_check)
 @app_commands.checks.dynamic_cooldown(cooldown_for_everyone_except_administrator)
-async def command_query(interaction: Interaction, game_id: str):
+async def command_queryserver(interaction: Interaction, game_id: str):
     """Query server"""
     Logger.command(interaction, game_id=game_id)
 
@@ -380,7 +379,7 @@ async def command_addserver(interaction: Interaction, game_id: str):
 
     if game := await find_game(interaction, game_id):
         if public:
-            limit = int(os.getenv('APP_PUBLIC_SERVER_LIMIT', '10'))
+            limit = server_limit(interaction.user.id)
 
             if len(database.all_servers(guild_id=interaction.guild.id)) > limit:
                 content = t('command.addserver.limit_exceeded', interaction.locale).format(limit=limit)
@@ -733,7 +732,7 @@ async def command_setalert(interaction: Interaction, address: str, query_port: a
         await interaction.response.send_message(content, view=view, ephemeral=True)
 
 
-@command_query.error
+@command_queryserver.error
 @command_addserver.error
 @command_delserver.error
 @command_refresh.error
@@ -901,17 +900,27 @@ async def to_chunks(lst, n):
 
 
 # region Application tasks
-@tasks.loop(seconds=max(15.0, float(os.getenv('TASK_QUERY_SERVER', '60'))))
+@tasks.loop(seconds=max(15.0, env('TASK_QUERY_SERVER')))
 async def tasks_query():
     """Query servers (Scheduled)"""
-    distinct_servers = database.distinct_servers()
-    tasks = filtered_tasks(distinct_servers)
-    disabled = len(distinct_servers) - len(tasks)
-    Logger.debug(f'Query servers: Tasks = {len(tasks)} servers. {disabled} servers are disabled for queries.')
+    # Pre query servers, some servers cannot be queried one by one
+    games_servers_count = database.games_servers_count()
+    pre_query_tasks = [pre_query(protocol({})) for name, protocol in protocols.items() if protocol.pre_query_required and games_servers_count.get(name, 0) > 0]
+    Logger.debug(f'Pre query servers: Tasks = {len(pre_query_tasks)}.')
+    pre_query_results = await asyncio.gather(*pre_query_tasks)
+    failed = sum(result is False for result in pre_query_results)
+    success = len(pre_query_results) - failed
+    percent = len(pre_query_results) > 0 and int(failed / len(pre_query_results) * 100) or 0
+    Logger.debug(f'Pre query servers: Total = {len(pre_query_results)}, Success = {success}, Failed = {failed} ({percent}% fail)')
 
+    # Query servers
+    distinct_servers = database.distinct_servers()
+    query_tasks = filtered_tasks(distinct_servers)
+    disabled = len(distinct_servers) - len(query_tasks)
+    Logger.debug(f'Query servers: Tasks = {len(query_tasks)} servers. {disabled} servers are disabled for queries.')
     servers: List[Server] = []
 
-    async for chunks in to_chunks(tasks, int(os.getenv('TASK_QUERY_CHUNK_SIZE', '50'))):
+    async for chunks in to_chunks(query_tasks, int(os.getenv('TASK_QUERY_CHUNK_SIZE', '50'))):
         servers += await asyncio.gather(*chunks)
 
     database.update_servers(servers)
@@ -919,7 +928,8 @@ async def tasks_query():
     failed = sum(server.status is False for server in servers)
     success = len(servers) - failed
     percent = len(servers) > 0 and int(failed / len(servers) * 100) or 0
-    Logger.info(f'Query servers: Total = {len(servers)}, Success = {success}, Failed = {failed} ({percent}% fail) ({disabled} disabled)')
+    disabled_string = '' if disabled <= 0 else f' ({disabled} disabled)'
+    Logger.info(f'Query servers: Total = {len(servers)}, Success = {success}, Failed = {failed} ({percent}% fail){disabled_string}')
 
     # Run the tasks after the server queries
     await asyncio.gather(tasks_send_alert(), tasks_edit_messages(), tasks_presence_update(tasks_query.current_loop))
@@ -944,6 +954,19 @@ def filtered_tasks(servers: List[Server]):
     return tasks
 
 
+async def pre_query(protocol: Protocol):
+    """Pre query"""
+    try:
+        if await asyncio.shield(protocol.pre_query()):
+            Logger.debug(f'Pre query servers: [{protocol.name}] Success.')
+            return True
+    except Exception as e:
+        Logger.debug(f'Pre query servers: [{protocol.name}] Fail to query. {type(e).__name__}: {e}')
+        return False
+
+    return None
+
+
 async def query_server(server: Server):
     """Query server"""
     try:
@@ -958,7 +981,7 @@ async def query_server(server: Server):
         server.result['raw']['__fail_query_count'] = int(raw.get('__fail_query_count', '0')) + 1
         timestamp = int(datetime.utcnow().timestamp())
         server.result['raw']['__offline_since'] = min(int(raw.get('__offline_since', timestamp)), timestamp)
-        Logger.debug(f'Query servers: ({server.game_id})[{server.address}:{server.query_port}] Error: {e}')
+        Logger.debug(f'Query servers: ({server.game_id})[{server.address}:{server.query_port}] {type(e).__name__}: {e}')
 
     return server
 
@@ -982,7 +1005,7 @@ async def tasks_send_alert():
 
         return server
 
-    fail_query_count = max(2, int(120 / float(os.getenv('TASK_QUERY_SERVER', '60'))))
+    fail_query_count = max(2, int(120 / env('TASK_QUERY_SERVER')))
 
     def should_send_alert(server: Server):
         if server.status:
@@ -1068,31 +1091,33 @@ async def tasks_presence_update(current_loop: int):
     name = None
     status = discord.Status.online
 
-    if activity_name := os.getenv('APP_ACTIVITY_NAME'):
+    if activity_name := env('APP_ACTIVITY_NAME'):
         # Activity name override
         name = activity_name
-    elif os.getenv('APP_PRESENCE_ADVERTISE', '').lower() == 'true':
-        # Advertise online servers one by one
-        if servers := database.all_servers():
-            online_servers = [server for server in servers if server.status]
-
-            if len(online_servers) > 0:
-                server = online_servers[current_loop % len(online_servers)]
-                name = Style.get_players_display_string(server) + f' {server.result["name"]}'
-    else:
-        # Display number of server monitoring
-        unique_servers = int(database.statistics()['unique_servers'])
-
-        if unique_servers == 1:
-            # Display server status on presence when one server only
-            if servers := database.all_servers():
-                server = servers[0]
-                status = discord.Status.online if server.status else discord.Status.do_not_disturb
-                name = Style.get_players_display_string(server)
-        else:
+    elif advertise_type := env('APP_ADVERTISE_TYPE'):
+        if advertise_type == AdvertiseType.server_count:
+            # Display number of server monitoring
+            unique_servers = int(database.statistics()['unique_servers'])
             name = f'{unique_servers} servers'
+        elif advertise_type == AdvertiseType.individually:
+            # Advertise online servers one by one
+            if servers := database.all_servers():
+                online_servers = [server for server in servers if server.status]
 
-    activity = discord.Activity(name=name, type=ActivityType(int(os.getenv('APP_ACTIVITY_TYPE', '3'))))
+                if len(online_servers) > 0:
+                    server = online_servers[current_loop % len(online_servers)]
+                    name = Style.get_players_display_string(server) + f' {server.result["name"]}'
+        elif advertise_type == AdvertiseType.player_stats:
+            # Display servers players stats
+            if servers := database.all_servers():
+                players, bots, maxplayers = map(sum, zip(*[Style.get_player_data(server) for server in servers]))
+                name = Style.to_players_string(players, bots, maxplayers)
+
+                # Sync bot status to server status when one server only
+                if len(servers) == 1:
+                    status = discord.Status.online if servers[0].status else discord.Status.do_not_disturb
+
+    activity = discord.Activity(name=name, type=env('APP_ACTIVITY_TYPE'))
     await client.change_presence(status=status, activity=activity)
 
 
