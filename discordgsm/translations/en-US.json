@@ -83,6 +83,7 @@
     "embed.field.game.name": "Game",
     "embed.field.current_map.name": "Current Map",
     "embed.field.current_map.size": "Map Size",
+    "embed.field.join_server": "Join Server",
     "embed.field.players.name": "Players",
     "embed.field.presence.name": "Presence",
     "embed.field.members.name": "Members",

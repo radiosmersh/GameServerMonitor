@@ -31,7 +31,7 @@ class Medium(Style):
 
         return fields
 
-    def embed(self) -> Embed:
+    async def embed(self) -> Embed:
         title, description, color = self.embed_data()
         embed = Embed(title=title, description=description, color=color)
 
@@ -53,6 +53,8 @@ class Medium(Style):
         else:
             self.add_players_field(embed)
             embed.add_field(name='*​*', value='*​*', inline=True)
+
+        await self.add_join_url_field(embed)
 
         self.set_image_and_thumbnail(embed)
         self.set_footer(embed)

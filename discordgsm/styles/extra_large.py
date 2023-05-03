@@ -15,8 +15,8 @@ class ExtraLarge(Large):
     def description(self) -> str:
         return t('style.extra_large.description', self.locale)
 
-    def embed(self) -> Embed:
-        embed = super().embed()
+    async def embed(self) -> Embed:
+        embed = await super().embed()
         field_name = t('embed.field.bot_list.name', self.locale)
         self.add_player_list_fields(embed, field_name, self.server.result['bots'])
 

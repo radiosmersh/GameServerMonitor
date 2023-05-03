@@ -18,8 +18,8 @@ class Large(Medium):
     def description(self) -> str:
         return t('style.large.description', self.locale)
 
-    def embed(self) -> Embed:
-        embed = super().embed()
+    async def embed(self) -> Embed:
+        embed = await super().embed()
         field_name = t(f"embed.field.{'members' if self.server.game_id == 'discord' else 'player_list'}.name", self.locale)
         self.add_player_list_fields(embed, field_name, self.server.result['players'])
 

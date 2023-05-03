@@ -1,3 +1,4 @@
+import os
 import socket
 from abc import ABC, abstractmethod
 from datetime import date, datetime
@@ -134,6 +135,28 @@ class Style(ABC):
         name = t(f"embed.field.{'presence' if self.server.game_id == 'discord' else 'players'}.name", self.locale)
         embed.add_field(name=name, value=self.get_players_display_string(self.server), inline=True)
 
+    async def add_join_url_field(self, embed: Embed):
+
+        join_url = f"fh2://{self.server.address}:{self.server.query_port}"
+
+        api_url = os.getenv('YOURLS_API_URL', '')
+        api_signature = os.getenv('YOURLS_API_SIGNATURE', '')
+
+        if not api_url or not api_signature:
+            return
+
+        url = f"{(api_url)}?signature={api_signature}&action=shorturl&format=json&url={join_url}"
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                data = await response.json()
+
+        if not data['shorturl']:
+            raise Exception(data['message'])
+        
+        name = t(f"embed.field.join_server", self.locale)
+        embed.add_field(name=name, value=data['shorturl'])
+
     def set_footer(self, embed: Embed):
         advertisement = '📺 Game Server Monitor'
 
@@ -153,7 +176,6 @@ class Style(ABC):
     def set_image_and_thumbnail(self, embed: Embed):
         if self.server.result['map']:
             image_url = "https://raw.githubusercontent.com" + quote("/radiosmersh/Map-Thumbnails/master/Forgotten Hope 2/%s.png" % self.server.result['map'])
-            print(image_url)
         else:
             image_url = self.server.style_data.get('image_url', '')
         thumbnail_url = self.server.style_data.get('thumbnail_url', '')

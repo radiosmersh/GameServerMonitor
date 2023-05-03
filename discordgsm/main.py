@@ -312,7 +312,7 @@ def query_server_modal_handler(interaction: Interaction, game: GamedigGame, is_a
 
                 async with aiohttp.ClientSession() as session:
                     webhook = Webhook.from_url(os.getenv('APP_PUBLIC_WEBHOOK_URL'), session=session)
-                    await webhook.send(content, embed=style.embed())
+                    await webhook.send(content, embed=await style.embed())
 
             server = database.add_server(server)
             Logger.info(f'Successfully added {game_id} server {address}:{query_port} to #{interaction.channel.name}({interaction.channel.id}).')
@@ -324,7 +324,7 @@ def query_server_modal_handler(interaction: Interaction, game: GamedigGame, is_a
             database.update_servers([server])
 
             content = t('function.query_server_modal.success', interaction.locale)
-            await interaction.followup.send(content, embed=style.embed())
+            await interaction.followup.send(content, embed=await style.embed())
 
     modal.on_submit = modal_on_submit
 
@@ -854,7 +854,7 @@ async def resend_channel_messages(interaction: Optional[Interaction], channel_id
 
     async for chunks in to_chunks(servers, 10):
         try:
-            message = await channel.send(embeds=[Styles.get(server).embed() for server in chunks])
+            message = await channel.send(embeds=[await Styles.get(server).embed() for server in chunks])
         except discord.Forbidden as e:
             # You do not have the proper permissions to send the message.
             Logger.error(f'Channel {channel.id} send_message discord.Forbidden {e}')
@@ -1067,7 +1067,7 @@ async def edit_message(servers: List[Server]):
 
     if message := await fetch_message(servers[0]):
         try:
-            embeds = [Styles.get(server).embed() for server in servers]
+            embeds = [await Styles.get(server).embed() for server in servers]
             message = await asyncio.wait_for(message.edit(embeds=embeds), timeout=float(os.getenv('TASK_EDIT_MESSAGE_TIMEOUT', '3')))
             Logger.debug(f'Edit messages: {message.id} success')
             return True
