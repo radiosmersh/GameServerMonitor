@@ -2,6 +2,7 @@ import socket
 from abc import ABC, abstractmethod
 from datetime import date, datetime
 from typing import Dict, Optional, Union
+from urllib.parse import quote
 
 import aiohttp
 from discord import Color, Embed, Emoji, Locale, PartialEmoji, TextStyle
@@ -147,10 +148,14 @@ class Style(ABC):
         last_update = datetime.now(tz=tz(self.server.style_data.get('timezone', 'Etc/UTC'))).strftime(time_format)
         last_update = t('embed.field.footer.last_update', self.locale).format(last_update=last_update)
         icon_url = 'https://avatars.githubusercontent.com/u/61296017'
-        embed.set_footer(text=f'DiscordGSM {__version__} | {advertisement} | {last_update}', icon_url=icon_url)
+        embed.set_footer(text=last_update, icon_url=icon_url)
 
     def set_image_and_thumbnail(self, embed: Embed):
-        image_url = self.server.style_data.get('image_url', '')
+        if self.server.result['map']:
+            image_url = "https://raw.githubusercontent.com" + quote("/radiosmersh/Map-Thumbnails/master/Forgotten Hope 2/%s.png" % self.server.result['map'])
+            print(image_url)
+        else:
+            image_url = self.server.style_data.get('image_url', '')
         thumbnail_url = self.server.style_data.get('thumbnail_url', '')
 
         if image_url.startswith('http://') or image_url.startswith('https://'):

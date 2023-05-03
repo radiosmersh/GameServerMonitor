@@ -24,6 +24,7 @@ class GameSpy3(Protocol):
         result: GamedigResult = {
             'name': info.get('hostname', ''),
             'map': info.get('mapname', info.get('map', '')),
+            'mapsize': int(info['bf2_mapsize']),
             'password': int(info.get('password', '0')) != 0,
             'numplayers': int(info['numplayers']),
             'numbots': 0,

@@ -82,6 +82,7 @@
     "embed.field.country.name": "Country",
     "embed.field.game.name": "Game",
     "embed.field.current_map.name": "Current Map",
+    "embed.field.current_map.size": "Map Size",
     "embed.field.players.name": "Players",
     "embed.field.presence.name": "Presence",
     "embed.field.members.name": "Members",

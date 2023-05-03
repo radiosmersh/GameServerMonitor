@@ -42,11 +42,13 @@ class Medium(Style):
         name = t('embed.field.country.name', self.locale)
         embed.add_field(name=name, value=flag_emoji, inline=True)
 
-        self.add_game_field(embed)
+        # self.add_game_field(embed)
 
-        if self.server.result['map'] and self.server.result['map'].strip():
+        if self.server.result['map'] and self.server.result['map'].strip() and self.server.result['mapsize']:
             name = t('embed.field.current_map.name', self.locale)
             embed.add_field(name=name, value=self.server.result['map'].strip(), inline=True)
+            name = t('embed.field.current_map.size', self.locale)
+            embed.add_field(name=name, value=self.server.result['mapsize'], inline=True)
             self.add_players_field(embed)
         else:
             self.add_players_field(embed)
