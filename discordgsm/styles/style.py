@@ -137,6 +137,7 @@ class Style(ABC):
 
     async def add_join_url_field(self, embed: Embed):
 
+        game_port = gamedig.game_port(self.server.result)
         join_url = f"fh2://{self.server.address}:{game_port}"
 
         api_url = os.getenv('YOURLS_API_URL', '')
