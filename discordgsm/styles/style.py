@@ -137,7 +137,7 @@ class Style(ABC):
 
     async def add_join_url_field(self, embed: Embed):
 
-        join_url = f"fh2://{self.server.address}:{self.server.query_port}"
+        join_url = f"fh2://{self.server.address}:{game_port}"
 
         api_url = os.getenv('YOURLS_API_URL', '')
         api_signature = os.getenv('YOURLS_API_SIGNATURE', '')
@@ -168,9 +168,11 @@ class Style(ABC):
             advertisement = '🎉 Happy New Year!'
 
         time_format = '%Y-%m-%d %I:%M:%S%p' if int(self.server.style_data.get('clock_format', '12')) == 12 else '%Y-%m-%d %H:%M:%S'
-        last_update = datetime.now(tz=tz(self.server.style_data.get('timezone', 'Etc/UTC'))).strftime(time_format)
-        last_update = t('embed.field.footer.last_update', self.locale).format(last_update=last_update)
+        # last_update = datetime.now(tz=tz(self.server.style_data.get('timezone', 'Etc/UTC'))).strftime(time_format)
+        # last_update = t('embed.field.footer.last_update', self.locale).format(last_update=last_update)
+        last_update = f"Last update: <t:{int(datetime.utcnow().timestamp())}>"
         icon_url = 'https://avatars.githubusercontent.com/u/61296017'
+        # embed.timestamp = datetime.utcnow()
         embed.set_footer(text=last_update, icon_url=icon_url)
 
     def set_image_and_thumbnail(self, embed: Embed):
