@@ -17,6 +17,7 @@ arma2oa,ARMA 2: Operation Arrowhead (2010),source,port=2302;port_query_offset=1
 arma3,ARMA 3 (2013),source,port=2302;port_query_offset=1
 armacwa,ARMA: Cold War Assault (2011),gamespy1,port=2302;port_query_offset=1
 armar,ARMA: Resistance (2011),gamespy1,port=2302;port_query_offset=1
+armareforger,Arma Reforger (2022),source,port=2001;port_query=17777
 assettocorsa,Assetto Corsa (2014),assettocorsa,port=9610
 atlas,Atlas (2018),source,port=5761;port_query_offset=51800
 avp2,Aliens versus Predator 2 (2001),gamespy1,port=27888
@@ -25,8 +26,8 @@ avp2010,Aliens vs. Predator (2010),source,port=27015
 baldursgate,Baldur's Gate (1998),gamespy1,port=6073;port_query=1470
 barotrauma,Barotrauma (2019),source,port=27015;port_query_offset=1
 bat1944,Battalion 1944 (2018),source,port=7777;port_query_offset=3
-beammp,BeamMP,beammp,port=30814
-beyondthewire,Beyond the Wire,source,port=7887;port_query=27165
+beammp,BeamMP (2021),beammp,port=30814
+beyondthewire,Beyond the Wire (2022),source,port=7887;port_query=27165
 bf1942,Battlefield 1942 (2002),gamespy1,port=14567;port_query=23000
 bf2,Battlefield 2 (2005),gamespy3,port=16567;port_query=29900
 bf2142,Battlefield 2142 (2006),gamespy3,port=16567;port_query=29900
@@ -66,6 +67,7 @@ cs16,Counter-Strike 1.6 (2003),source,port=27015
 cscz,Counter-Strike: Condition Zero (2004),source,port=27015
 csgo,Counter-Strike: Global Offensive (2012),source,port=27015
 css,Counter-Strike: Source (2004),source,port=27015
+cs2,Counter-Strike 2 (2023),source,port=27015
 
 daikatana,Daikatana (2000),quake2,port=27982;port_query_offset=10
 darkesthour,Darkest Hour: Europe '44-'45 (2008),unreal2,port=7757;port_query_offset=1
@@ -90,7 +92,7 @@ doom3,Doom 3 (2004),doom3,port=27666
 dota2,Dota 2 (2013),source,port=27015
 drakan,Drakan: Order of the Flame (1999),gamespy1,port=27045;port_query_offset=1
 
-eco,ECO,eco,port=3001
+eco,ECO (2018),eco,port=3001
 empyrion,Empyrion - Galactic Survival (2015),source,port=30000;port_query_offset=1
 esf,Half Life: Earths Special Forces(2013),source,port=27015
 etqw,Enemy Territory: Quake Wars (2007),doom3,port=3074;port_query=27733
@@ -104,8 +106,9 @@ fear,F.E.A.R. (2005),gamespy2,port_query=27888
 fivem,Grand Theft Auto V - FiveM (2013),fivem,port=30120
 flashpoint,Operation Flashpoint: Cold War Crisis (2001),gamespy1,port=2302;port_query_offset=1
 flashpointresistance,Operation Flashpoint: Resistance (2002),gamespy1,port=2302;port_query_offset=1
-forrest,The Forrest (2014),source,port=27015;port_query_offset=1
+forest,The Forest (2014),source,port=27015;port_query_offset=1
 fortressforever,Fortress Forever (2007),source,port=27015
+front,The Front (2023),source,port=27015
 fs22,Farming Simulator 22 (2021),source,port=27015
 
 garrysmod,Garry's Mod (2004),source,port=27015
@@ -116,7 +119,7 @@ gore,Gore: Ultimate Soldier (2002),gamespy1,port=27777;port_query_offset=1
 gportal,GPORTAL,gportal,
 graw,Tom Clancy's Ghost Recon Advanced Warfighter (2006),gamespy2,port_query=15250
 graw2,Tom Clancy's Ghost Recon Advanced Warfighter 2 (2007),gamespy2,port_query=16250
-groundbreach,Ground Breach (2018),source,port=27015
+groundbranch,Ground Branch (2018),source,port=27015
 gunmanchronicles,Gunman Chronicles (2000),source,port=27015
 
 had2,Hidden & Dangerous 2 (2003),gamespy1,port=11001;port_query_offset=3
@@ -128,7 +131,8 @@ hidden,The Hidden (2005),source,port=27015
 hl2dm,Half-Life 2: Deathmatch (2004),source,port=27015
 hldm,Half-Life Deathmatch (1998),source,port=27015
 hldms,Half-Life Deathmatch: Source (2005),source,port=27015
-hll,Hell Let Loose,source,port=27015
+hll,Hell Let Loose (2021),source,port=27015
+hfnaw,Holdfast: Nations at War (2020),source,port=27000
 homefront,Homefront (2011),source,port=27015
 homeworld2,Homeworld 2 (2003),gamespy1,port_query=6500
 hurtworld,Hurtworld (2015),source,port=12871;port_query=12881
@@ -184,15 +188,16 @@ nwn,Neverwinter Nights (2002),nwn1,port=5121
 nwn2,Neverwinter Nights 2 (2006),nwn2,port=5121
 
 openarena,OpenArena (2005),quake3,port_query=27960
+operationharsh,Operation: Harsh Doorstop (2023),source,port_query=27005
 
-painkiller,Painkiller,ase,port=3455;port_query_offset=123
+painkiller,Painkiller (2004),ase,port=3455;port_query_offset=123
 pixark,PixARK (2018),source,port=7777;port_query=27015
-postal2,Postal 2,gamespy1,port=7777;port_query_offset=1
+postal2,Postal 2 (2003),gamespy1,port=7777;port_query_offset=1
 prbf2,Project Reality: Battlefield 2 (2005),gamespy3,port=16567;port_query=29900
-prey,Prey,doom3,port=27719
-primalcarnage,Primal Carnage: Extinction,source,port=7777;port_query=27015
-przomboid,Project Zomboid,source,port=16261
-ps,Post Scriptum,source,port=10027;port_query=10037
+prey,Prey (2017),doom3,port=27719
+primalcarnage,Primal Carnage: Extinction (2015),source,port=7777;port_query=27015
+przomboid,Project Zomboid (2013),source,port=16261
+ps,Post Scriptum (2018),source,port=10027;port_query=10037
 
 quake1,Quake 1: QuakeWorld (1996),quake1,port=27500
 quake2,Quake 2 (1997),quake2,port=27910
@@ -200,30 +205,30 @@ quake3,Quake 3: Arena (1999),quake3,port=27960
 quake4,Quake 4 (2005),doom3,port=28004
 quakelive,Quake Live (2010),source,port=27960
 
-r6,Rainbow Six,gamespy1,port_query=2348
-r6ravenshield,Rainbow Six 3: Raven Shield,gamespy1,port=7777;port_query_offset=1000
-r6roguespear,Rainbow Six 2: Rogue Spear,gamespy1,port_query=2346
-ragdollkungfu,Rag Doll Kung Fu,source,port=27015
-rallisportchallenge,RalliSport Challenge,gamespy1,port_query=17500
-rallymasters,Rally Masters,gamespy1,port_query=16666
-redline,Redline,gamespy1,port_query=25252
-redm,Red Dead Redemption 2 - RedM,fivem,port=30120
-redorchestra,Red Orchestra,unreal2,port=7758;port_query_offset=1
-redorchestra2,Red Orchestra 2,source,port=7777;port_query=27015
-redorchestraost,Red Orchestra: Ostfront 41-45,gamespy1,port=7757;port_query_offset=10
-ricochet,Ricochet,source,port=27015
-riseofnations,Rise of Nations,gamespy1,port_query=6501
-rs2,Rising Storm 2: Vietnam,source,port=27015
-rtcw,Return to Castle Wolfenstein,quake3,port_query=27960
-rune,Rune,gamespy1,port=7777;port_query_offset=1
-rust,Rust,source,port=28015
+r6,Rainbow Six (1998),gamespy1,port_query=2348
+r6ravenshield,Rainbow Six 3: Raven Shield (2003),gamespy1,port=7777;port_query_offset=1000
+r6roguespear,Rainbow Six 2: Rogue Spear (1999),gamespy1,port_query=2346
+ragdollkungfu,Rag Doll Kung Fu (2005),source,port=27015
+rallisportchallenge,RalliSport Challenge (2002),gamespy1,port_query=17500
+rallymasters,Rally Masters (2000),gamespy1,port_query=16666
+redline,Redline (1999),gamespy1,port_query=25252
+redm,Red Dead Redemption 2 - RedM (2016),fivem,port=30120
+redorchestra,Red Orchestra (2011),unreal2,port=7758;port_query_offset=1
+redorchestra2,Red Orchestra 2 (2011),source,port=7777;port_query=27015
+redorchestraost,Red Orchestra: Ostfront 41-45 (2006),gamespy1,port=7757;port_query_offset=10
+ricochet,Ricochet (2000),source,port=27015
+riseofnations,Rise of Nations (2003),gamespy1,port_query=6501
+rs2,Rising Storm 2: Vietnam (2017),source,port=27015
+rtcw,Return to Castle Wolfenstein (2001),quake3,port_query=27960
+rune,Rune (2000),gamespy1,port=7777;port_query_offset=1
+rust,Rust (2018),source,port=28015
 
-samp,San Andreas Multiplayer,samp,port=7777
+samp,San Andreas Multiplayer (2006),samp,port=7777
 satisfactory,Satisfactory (2019),satisfactory,port_query=15777
 scum,SCUM (2018),scum,port=27015
-shatteredhorizon,Shattered Horizon,source,port=27015
-ship,The Ship,source,port=27015
-shogo,Shogo,gamespy1,port_query=27888
+shatteredhorizon,Shattered Horizon (2009),source,port=27015
+ship,The Ship (2006),source,port=27015
+shogo,Shogo (1998),gamespy1,port_query=27888
 sin,SiN,gamespy1,port_query=22450
 sinep,SiN Episodes,source,port=27015
 sof,Soldier of Fortune,quake1,port_query=28910
@@ -251,12 +256,13 @@ synergy,Synergy,source,port=27015
 tacticalops,Tactical Ops,gamespy1,port=7777;port_query_offset=1
 takeonhelicopters,Take On Helicopters (2011),gamespy1,port=2302;port_query_offset=1
 teamfactor,Team Factor,gamespy1,port_query=57778
-teamspeak3,Teamspeak 3,teamspeak3,port=9987
+teamspeak3,Teamspeak 3,teamspeak3,port=10011
 terminus,Terminus,gamespy1,port_query=12286
 terraria,Terraria - TShock (2011),terraria,port=7777;port_query_offset=101
 tf2,Team Fortress 2,source,port=27015
 tfc,Team Fortress Classic,source,port=27015
 theisle,The Isle (2015),source,port_query=7778
+thespecialists,The Specialists (2002),source,port=27015
 thps3,Tony Hawk's Pro Skater 3,gamespy1,port_query=6500
 thps4,Tony Hawk's Pro Skater 4,gamespy1,port_query=6500
 thu2,Tony Hawk's Underground 2,gamespy1,port_query=5153
