@@ -187,7 +187,7 @@ class Style(ABC):
 
     def set_image_and_thumbnail(self, embed: Embed):
         if self.server.result['map']:
-            image_url = "https://raw.githubusercontent.com" + quote("/radiosmersh/Map-Thumbnails/master/Forgotten Hope 2/%s.png" % self.server.result['map'])
+            image_url = "https://raw.githubusercontent.com" + quote("/radiosmersh/Map-Thumbnails/master/Forgotten Hope 2/%s.webp" % self.server.result['map'])
         else:
             image_url = str(self.server.style_data.get('image_url', ''))
         thumbnail_url = str(self.server.style_data.get('thumbnail_url', ''))
