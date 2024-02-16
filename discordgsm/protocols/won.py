@@ -3,6 +3,7 @@ import time
 from typing import TYPE_CHECKING
 
 import opengsq
+from opengsq.responses.source import Player, SourceInfo, GoldSourceInfo, Visibility
 
 from discordgsm.protocols.protocol import Protocol
 
@@ -11,32 +12,39 @@ if TYPE_CHECKING:
 
 
 class WON(Protocol):
-    name = 'won'
+    name = "won"
 
     async def query(self):
-        host, port = str(self.kv['host']), int(str(self.kv['port']))
+        host, port = str(self.kv["host"]), int(str(self.kv["port"]))
         won = opengsq.WON(host, port, self.timeout)
         start = time.time()
         info, players = await asyncio.gather(won.get_info(), won.get_players())
         ping = int((time.time() - start) * 1000)
-        players.sort(key=lambda x: x['Duration'])
-        bots = []
+        players.sort(key=lambda x: x.duration)
+        bots: list[Player] = []
 
-        while len(bots) < info['Bots']:
+        while len(bots) < info["Bots"]:
             bots.append(players.pop() if len(players) > 0 else {})
 
+        if isinstance(info, SourceInfo):
+            connect = f"{host}:{info.port}"
+        elif isinstance(info, GoldSourceInfo):
+            connect = info.address
+
         result: GamedigResult = {
-            'name': info['Name'],
-            'map': info['Map'],
-            'password': info['Visibility'] != 0,
-            'numplayers': info['Players'],
-            'numbots': info['Bots'],
-            'maxplayers': info['MaxPlayers'],
-            'players': [{'name': player['Name'], 'raw': {'score': player['Score'], 'time': player['Duration']}} for player in players],
-            'bots': [{'name': bot['Name'], 'raw': {'score': bot['Score'], 'time': bot['Duration']}} for bot in bots],
-            'connect': f"{host}:{info.get('GamePort', port)}",
-            'ping': ping,
-            'raw': info
+            "name": info.name,
+            "map": info.map,
+            "password": info.visibility == Visibility.Private,
+            "numplayers": info.players,
+            "numbots": info.bots,
+            "maxplayers": info.max_players,
+            "players": [
+                {"name": player.name, "raw": player.__dict__} for player in players
+            ],
+            "bots": [{"name": bot.name, "raw": bot.__dict__} for bot in bots],
+            "connect": connect,
+            "ping": ping,
+            "raw": info.__dict__,
         }
 
         return result

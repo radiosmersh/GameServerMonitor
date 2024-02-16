@@ -31,6 +31,11 @@ class Style(ABC):
         return str(self.server.style_data.get('locale', 'en-US'))
 
     @property
+    def standalone(self) -> str:
+        """Whether the embed should be within a single discord message"""
+        return False
+
+    @property
     @abstractmethod
     def display_name(self) -> str:
         raise NotImplementedError()
@@ -49,10 +54,11 @@ class Style(ABC):
         return {
             'description': TextInput(
                 label=t('embed.text_input.description.label', self.locale),
+                style=TextStyle.long,
                 placeholder=t('embed.text_input.description.placeholder', self.locale),
                 default=self.server.style_data.get('description', ''),
                 required=False,
-                style=TextStyle.long
+                max_length=1024
             ),
             'fullname': TextInput(
                 label=t('embed.text_input.fullname.label', self.locale),
@@ -103,6 +109,10 @@ class Style(ABC):
 
     def embed_data(self):
         title = (self.server.result['password'] and '🔒 ' or '') + self.server.result['name']
+
+        if len(title) > 256:
+            title = title[:256][:-3] + '...'
+
         description = str(self.server.style_data.get('description', '')).strip()
         description = description if description else None
         color = Color.from_rgb(88, 101, 242) if self.server.status else Color.from_rgb(32, 34, 37)
@@ -179,8 +189,8 @@ class Style(ABC):
         if self.server.result['map']:
             image_url = "https://raw.githubusercontent.com" + quote("/radiosmersh/Map-Thumbnails/master/Forgotten Hope 2/%s.png" % self.server.result['map'])
         else:
-            image_url = self.server.style_data.get('image_url', '')
-        thumbnail_url = self.server.style_data.get('thumbnail_url', '')
+            image_url = str(self.server.style_data.get('image_url', ''))
+        thumbnail_url = str(self.server.style_data.get('thumbnail_url', ''))
 
         if image_url.startswith('http://') or image_url.startswith('https://'):
             embed.set_image(url=image_url)

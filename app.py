@@ -5,17 +5,18 @@ import re
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 
-from discordgsm.database import Database
 from discordgsm.environment import env, environment
 from discordgsm.main import tree
-from discordgsm.service import gamedig, invite_link, public, whitelist_guilds
+from discordgsm.service import database, gamedig, invite_link, public, whitelist_guilds
 from discordgsm.translator import Locale, translations
 from discordgsm.version import __version__
 
 load_dotenv()
 
-app = Flask(__name__, static_url_path='', static_folder='public/static', template_folder='public')
-cmd = [command.to_dict() for command in tree.get_commands(guild=None if public or len(whitelist_guilds) <= 0 else whitelist_guilds[0])]
+app = Flask(__name__, static_url_path='',
+            static_folder='public/static', template_folder='public')
+cmd = [command.to_dict() for command in tree.get_commands(
+    guild=None if public or len(whitelist_guilds) <= 0 else whitelist_guilds[0])]
 
 
 @app.route('/')
@@ -38,11 +39,11 @@ if os.getenv('WEB_API_ENABLE', '').lower() == 'true':
         return jsonify(gamedig.games)
 
     @app.route('/api/v1/info')
-    def info():
+    async def info():
         return jsonify({
             'version': __version__,
             'invite_link': invite_link,
-            'statistics': Database().statistics(),
+            'statistics': await database.statistics(),
         })
 
     @app.route('/api/v1/commands')
@@ -70,30 +71,31 @@ if os.getenv('WEB_API_ENABLE', '').lower() == 'true':
 
     @app.route('/api/v1/servers')
     @app.route('/api/v1/servers/<game_id>')
-    def servers(game_id: str = None):
+    async def servers(game_id: str = None):
         if game_id is None:
             servers_count = {game_id: 0 for game_id in gamedig.games}
-            servers_count.update(Database().games_servers_count())
+            servers_count.update(await database.count_servers_per_game())
             return jsonify(servers_count)
 
         if game_id not in gamedig.games:
             return jsonify({'error': 'Invalid game id'})
 
-        return jsonify(Database().all_servers(game_id=game_id, filter_secret=True))
+        servers = await database.all_servers(game_id=game_id, filter_secret=True)
+        return jsonify(servers)
 
     @app.route('/api/v1/channels')
     @app.route('/api/v1/channels/<channel_id>')
-    def channels(channel_id: str = None):
+    async def channels(channel_id: str = None):
         if channel_id is not None and not channel_id.isdigit():
             return jsonify({'error': 'Invalid channel id'})
 
-        database = Database()
-
         if channel_id is None:
-            servers = database.all_servers(filter_secret=True)
-            return jsonify(database.all_channels_servers(servers))
+            servers_count = await database.count_servers_per_channel()
+            return jsonify(servers_count)
 
-        return jsonify(database.all_servers(channel_id=int(channel_id), filter_secret=True))
+        servers = await database.all_servers(channel_id=int(channel_id), filter_secret=True)
+        return jsonify(servers)
+
 
 if __name__ == '__main__':
     app.run(debug=env('APP_DEBUG'))

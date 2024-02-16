@@ -120,13 +120,17 @@ class Gamedig:
         return 0 <= port_number <= 65535
 
     async def query(self, server: Server):
+        # Backward compatibility
+        if server.game_id == 'forrest':
+            server.game_id = 'forest'
+
         return await self.run({**{
             'type': server.game_id,
             'host': server.address,
             'port': server.query_port,
         }, **server.query_extra})
 
-    async def run(self, kv: dict):
+    async def run(self, kv: dict) -> GamedigResult:
         if protocol := protocols.get(self.games[kv['type']]['protocol']):
             return await asyncio.wait_for(protocol(kv).query(), timeout=env('TASK_QUERY_SERVER_TIMEOUT'))
 

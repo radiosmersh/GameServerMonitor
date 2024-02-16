@@ -10,27 +10,27 @@ if TYPE_CHECKING:
 
 
 class Raknet(Protocol):
-    name = 'raknet'
+    name = "raknet"
 
     async def query(self):
-        host, port = str(self.kv['host']), int(str(self.kv['port']))
-        raknet = opengsq.Raknet(host, port, self.timeout)
+        host, port = str(self.kv["host"]), int(str(self.kv["port"]))
+        raknet = opengsq.RakNet(host, port, self.timeout)
         start = time.time()
         status = await raknet.get_status()
         ping = int((time.time() - start) * 1000)
 
         result: GamedigResult = {
-            'name': status.get('motd_line_1', ''),
-            'map': status.get('motd_line_2', ''),
-            'password': False,
-            'numplayers': int(status.get('num_players', '')),
-            'numbots': 0,
-            'maxplayers': int(status.get('max_players', '')),
-            'players': [],
-            'bots': [],
-            'connect': f"{host}:{status.get('port_ipv4', port)}",
-            'ping': ping,
-            'raw': status
+            "name": status.motd_line1,
+            "map": status.motd_line2,
+            "password": False,
+            "numplayers": status.num_players,
+            "numbots": 0,
+            "maxplayers": status.max_players,
+            "players": None,
+            "bots": None,
+            "connect": f"{host}:{status.port_ipv4}",
+            "ping": ping,
+            "raw": status.__dict__,
         }
 
         return result

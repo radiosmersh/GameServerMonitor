@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
+from opengsq.protocol_socket import Socket
 
 if TYPE_CHECKING:
     from discordgsm.gamedig import GamedigResult
@@ -17,7 +18,7 @@ class Server:
     message_id: Optional[int]
     game_id: str
     address: str
-    query_port: str
+    query_port: int
     query_extra: dict
     status: bool
     result: GamedigResult
@@ -25,7 +26,7 @@ class Server:
     style_data: dict
 
     @staticmethod
-    def new(guild_id: int, channel_id: int, game_id: str, address: str, query_port: str, query_extra: dict, result: GamedigResult) -> Server:
+    def new(guild_id: int, channel_id: int, game_id: str, address: str, query_port: int, query_extra: dict, result: GamedigResult) -> Server:
         return Server(
             id=None,
             position=None,
@@ -40,24 +41,6 @@ class Server:
             result=result,
             style_id=None,
             style_data={}
-        )
-
-    @staticmethod
-    def from_distinct_query(row: tuple) -> Server:
-        return Server(
-            id=None,
-            position=None,
-            guild_id=None,
-            channel_id=None,
-            message_id=None,
-            game_id=row[0],
-            address=row[1],
-            query_port=row[2],
-            query_extra=json.loads(row[3]),
-            status=row[4] == 1,
-            result=json.loads(row[5]),
-            style_id=None,
-            style_data=None,
         )
 
     @staticmethod
@@ -85,3 +68,29 @@ class Server:
             style_id=row[11],
             style_data=style_data,
         )
+
+    @staticmethod
+    def from_docs(data: dict, filter_secret=False) -> Server:
+        server = Server(
+            id=data['_id'],
+            position=data['position'],
+            guild_id=data['guild_id'],
+            channel_id=data['channel_id'],
+            message_id=data.get('message_id'),
+            game_id=data['game_id'],
+            address=data['address'],
+            query_port=data['query_port'],
+            query_extra=data['query_extra'],
+            status=data['status'],
+            result=data['result'],
+            style_id=data['style_id'],
+            style_data=data['style_data']
+        )
+
+        if filter_secret:
+            # Filter key started with _ and filter the description since it may contain secrets
+            server.query_extra = {k: v for k, v in server.query_extra.items() if not str(k).startswith('_')}
+            server.style_data = {k: v for k, v in server.style_data.items() if not str(k).startswith('_') and k != 'description'}
+            server.id = str(data['_id'])  # Convert ObjectId to str
+
+        return server

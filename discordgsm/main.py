@@ -1,18 +1,21 @@
+from __future__ import annotations
+
 import asyncio
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Optional
 
 import aiohttp
 import discord
-from discord import (AutoShardedClient, ButtonStyle, Client, Embed,
+from discord import (AutoShardedClient, ButtonStyle, Embed,
                      Interaction, Locale, Message, SelectOption, Webhook,
                      app_commands)
 from discord.ext import tasks
 from discord.ui import Button, Modal, Select, TextInput, View
 from dotenv import load_dotenv
+from discordgsm.async_utils import to_chunks
 
 from discordgsm.environment import AdvertiseType, env
 from discordgsm.gamedig import GamedigGame
@@ -24,13 +27,14 @@ from discordgsm.service import (database, gamedig, invite_link, public,
 from discordgsm.styles import Style, Styles
 from discordgsm.translator import Translator, t
 from discordgsm.version import __version__
+from opengsq.protocol_socket import Socket
 
 load_dotenv()
 
 # Create table here because it will cause thread issue on service.py
 database.create_table_if_not_exists()
 
-messages: Dict[int, Message] = {}
+messages: dict[int, Message] = {}
 """DiscordGSM messages cache"""
 
 
@@ -44,7 +48,7 @@ def cache_message(message: Message):
 intents = discord.Intents.default()
 shard_ids = [int(shard_id) for shard_id in os.getenv('APP_SHARD_IDS').replace(';', ',').split(',') if shard_id] if len(os.getenv('APP_SHARD_IDS', '')) > 0 else None
 shard_count = int(os.getenv('APP_SHARD_COUNT', '1'))
-client = Client(intents=intents) if not public else AutoShardedClient(intents=intents, shard_ids=shard_ids, shard_count=shard_count)
+client = AutoShardedClient(intents=intents, shard_ids=shard_ids, shard_count=shard_count)
 
 
 # region Application event
@@ -53,7 +57,7 @@ async def on_ready():
     """Called when the client is done preparing the data received from Discord."""
     await client.wait_until_ready()
 
-    Logger.info(f'Connected to {database.type} database')
+    Logger.info(f'Connected to {database.driver.value} database')
     Logger.info(f'Logged on as {client.user}')
     Logger.info(f'Add to Server: {invite_link}')
 
@@ -92,18 +96,18 @@ async def on_guild_join(guild: discord.Guild):
 @client.event
 async def on_guild_remove(guild: discord.Guild):
     """Remove all associated servers in database when discordgsm leaves"""
-    database.factory_reset(guild.id)
+    await database.delete_servers(guild_id=guild.id)
     Logger.info(f'{client.user} left {guild.name}({guild.id}), associated servers were deleted.')
 
 
 @client.event
 async def on_guild_channel_delete(channel: discord.abc.GuildChannel):
     """Remove all associated servers in database when channel deletes"""
-    database.delete_servers(channel_id=channel.id)
+    await database.delete_servers(channel_id=channel.id)
     Logger.info(f'Channel #{channel.name}({channel.id}) deleted, associated servers were deleted.')
 
 
-async def sync_commands(guilds: List[discord.Object]):
+async def sync_commands(guilds: list[discord.Object]):
     """Syncs the application commands to Discord."""
     if not public:
         for guild in guilds:
@@ -221,7 +225,7 @@ async def send_alert(server: Server, alert: Alert):
 
 def query_server_modal(game: GamedigGame, locale: Locale):
     """Query server modal"""
-    query_param: Dict[str, TextInput] = {
+    query_param: dict[str, TextInput] = {
         'host': TextInput(label=t('modal.text_input.address.label', locale), placeholder=t('command.option.address', locale)),
         'port': TextInput(
             label=t('modal.text_input.query_port.label', locale),
@@ -237,11 +241,17 @@ def query_server_modal(game: GamedigGame, locale: Locale):
         title = title[:-3] + '...'
 
     modal = Modal(title=title).add_item(query_param['host']).add_item(query_param['port'])
-    query_extra: Dict[str, TextInput] = {}
+    query_extra: dict[str, TextInput] = {}
 
     if game['id'] == 'terraria':
         query_extra['_token'] = TextInput(label='REST user token')
         modal.add_item(query_extra['_token'])
+    elif game['id'] == 'scpsl':
+        query_param['host'] = TextInput(label='Account ID', placeholder='API key for the account id')
+        query_extra['_api_key'] = TextInput(label='API Key', placeholder='Account ID of the server')
+        modal.add_item(query_extra['_api_key'])
+        modal.remove_item(query_param['port'])
+        query_param['port']._value = '0'
     elif game['id'] == 'gportal':
         query_extra['serverId'] = TextInput(label='GPORTAL server id')
         modal.add_item(query_extra['serverId'])
@@ -266,8 +276,6 @@ def query_server_modal_handler(interaction: Interaction, game: GamedigGame, is_a
         for item in params.values():
             item.default = item._value = str(item._value).strip()
 
-        game_id, address, query_port = game['id'], str(query_param['host']), str(query_param['port'])
-
         # Validate the port number
         for key in params.keys():
             if 'port' in key.lower() and not gamedig.is_port_valid(str(params[key])):
@@ -277,10 +285,12 @@ def query_server_modal_handler(interaction: Interaction, game: GamedigGame, is_a
 
         await interaction.response.defer(ephemeral=is_add_server, thinking=True)
 
+        game_id, address, query_port = game['id'], str(query_param['host']), int(str(query_param['port']))
+
         # Check is the server already exists in database
         if is_add_server:
             try:
-                database.find_server(interaction.channel.id, address, query_port)
+                await database.find_server(interaction.channel.id, address, query_port)
                 content = t('function.query_server_modal.already_exists', interaction.locale)
                 await interaction.followup.send(content, ephemeral=True)
                 return
@@ -310,15 +320,12 @@ def query_server_modal_handler(interaction: Interaction, game: GamedigGame, is_a
                     webhook = Webhook.from_url(os.getenv('APP_PUBLIC_WEBHOOK_URL'), session=session)
                     await webhook.send(content, embed=await style.embed())
 
-            server = database.add_server(server)
+            server = await database.add_server(server)
             Logger.info(f'Successfully added {game_id} server {address}:{query_port} to #{interaction.channel.name}({interaction.channel.id}).')
 
             if await resend_channel_messages(interaction):
                 await interaction.delete_original_response()
         else:
-            # Reactivate disabled server
-            database.update_servers([server])
-
             content = t('function.query_server_modal.success', interaction.locale)
             await interaction.followup.send(content, embed=await style.embed())
 
@@ -377,7 +384,7 @@ async def command_addserver(interaction: Interaction, game_id: str):
         if public:
             limit = server_limit(interaction.user.id)
 
-            if len(database.all_servers(guild_id=interaction.guild.id)) > limit:
+            if len(await database.all_servers(guild_id=interaction.guild.id)) >= limit:
                 content = t('command.addserver.limit_exceeded', interaction.locale).format(limit=limit)
                 await interaction.response.send_message(content, ephemeral=True)
                 return
@@ -396,7 +403,7 @@ async def command_delserver(interaction: Interaction, address: str, query_port: 
 
     if server := await find_server(interaction, address, query_port):
         await interaction.response.defer(ephemeral=True)
-        database.delete_server(server)
+        await database.delete_servers(servers=[server])
 
         if await resend_channel_messages(interaction):
             await interaction.delete_original_response()
@@ -427,8 +434,8 @@ async def command_factoryreset(interaction: Interaction):
 
     async def button_callback(interaction: Interaction):
         await interaction.response.defer(ephemeral=True)
-        servers = database.all_servers(guild_id=interaction.guild.id)
-        database.factory_reset(interaction.guild.id)
+        servers = await database.all_servers(guild_id=interaction.guild.id)
+        await database.delete_servers(guild_id=interaction.guild.id)
 
         async def purge_channel(channel_id: int):
             channel = client.get_channel(channel_id)
@@ -482,7 +489,7 @@ async def action_move(interaction: Interaction, address: str, query_port: int, d
 
     if server := await find_server(interaction, address, query_port):
         await interaction.response.defer(ephemeral=True)
-        database.modify_server_position(server, direction)
+        await database.modify_server_position(server, direction)
         await refresh_channel_messages(interaction)
         await interaction.delete_original_response()
 
@@ -512,8 +519,8 @@ async def command_changestyle(interaction: Interaction, address: str, query_port
 
             await interaction.response.defer(ephemeral=True)
             server.style_id = select.values[0]
-            database.update_server_style_id(server)
-            await refresh_channel_messages(interaction)
+            await database.update_server_style_id(server)
+            await resend_channel_messages(interaction)
 
         select.callback = select_callback
         view = View()
@@ -544,7 +551,7 @@ async def command_editstyledata(interaction: Interaction, address: str, query_po
         async def modal_on_submit(interaction: Interaction):
             await interaction.response.defer(ephemeral=True)
             server.style_data.update({k: str(v) for k, v in edit_fields.items()})
-            database.update_server_style_data(server)
+            await database.update_servers_style_data([server])
             await refresh_channel_messages(interaction)
 
         modal.on_submit = modal_on_submit
@@ -567,11 +574,8 @@ async def command_switch(interaction: Interaction, channel: discord.TextChannel,
 
     if servers := await find_servers(interaction, address, query_port):
         await interaction.response.defer(ephemeral=True)
+        await database.update_servers(servers, channel_id=channel.id)
 
-        for server in servers:
-            server.channel_id = channel.id
-
-        database.update_servers_channel_id(servers)
         await resend_channel_messages(None, interaction.channel.id)
         await resend_channel_messages(None, channel.id)
 
@@ -603,7 +607,7 @@ async def command_settimezone(interaction: Interaction, timezone: str, address: 
         for server in servers:
             server.style_data.update({'timezone': timezone})
 
-        database.update_servers_style_data(servers)
+        await database.update_servers_style_data(servers)
         await refresh_channel_messages(interaction)
         await interaction.delete_original_response()
 
@@ -625,7 +629,7 @@ async def command_setclock(interaction: Interaction, clock_format: app_commands.
         for server in servers:
             server.style_data.update({'clock_format': clock_format.value})
 
-        database.update_servers_style_data(servers)
+        await database.update_servers_style_data(servers)
         await refresh_channel_messages(interaction)
         await interaction.delete_original_response()
 
@@ -651,7 +655,7 @@ async def command_setlocale(interaction: Interaction, locale: str, address: Opti
         for server in servers:
             server.style_data.update({'locale': locale})
 
-        database.update_servers_style_data(servers)
+        await database.update_servers_style_data(servers)
         await refresh_channel_messages(interaction)
         await interaction.delete_original_response()
 
@@ -683,7 +687,7 @@ async def command_setalert(interaction: Interaction, address: str, query_port: a
                 webhook_url = str(text_input_webhook_url).strip()
                 content = str(text_input_webhook_content).strip()
                 server.style_data.update({'_alert_webhook_url': webhook_url, '_alert_content': content})
-                database.update_server_style_data(server)
+                await database.update_servers_style_data([server])
 
             modal.on_submit = modal_on_submit
             await interaction.response.send_modal(modal)
@@ -764,7 +768,7 @@ async def find_game(interaction: Interaction, game_id: str):
 async def find_server(interaction: Interaction, address: str, query_port: int):
     """Find server by channel id, and return server"""
     try:
-        server = database.find_server(interaction.channel.id, address, query_port)
+        server = await database.find_server(interaction.channel.id, address, query_port)
         return server
     except database.ServerNotFoundError:
         content = t('function.find_server.not_found', interaction.locale).format(address=address, query_port=query_port)
@@ -774,7 +778,7 @@ async def find_server(interaction: Interaction, address: str, query_port: int):
 
 async def find_servers(interaction: Interaction, address: Optional[str], query_port: Optional[int]):
     if address is None and query_port is None:
-        if servers := database.all_servers(channel_id=interaction.channel.id):
+        if servers := await database.all_servers(channel_id=interaction.channel.id):
             return servers
         else:
             content = t('function.find_servers.empty', interaction.locale)
@@ -809,12 +813,12 @@ async def fetch_message(server: Server):
         # The specified message was not found.
         Logger.error(f'({server.game_id})[{server.address}:{server.query_port}] fetch_message discord.NotFound {e}')
         server.message_id = None
-        database.update_servers_message_id([server])
+        await database.update_servers_message_id([server])
     except discord.Forbidden as e:
         # You do not have the permissions required to get a message.
         Logger.error(f'({server.game_id})[{server.address}:{server.query_port}] fetch_message discord.Forbidden {e}')
         server.message_id = None
-        database.update_servers_message_id([server])
+        await database.update_servers_message_id([server])
     except discord.HTTPException as e:
         # Retrieving the message failed.
         Logger.error(f'({server.game_id})[{server.address}:{server.query_port}] fetch_message discord.HTTPException {e}')
@@ -822,10 +826,33 @@ async def fetch_message(server: Server):
     return None
 
 
+async def embeds_chunks(servers: list[Server], n=10):
+    buffer = []
+
+    for server in servers:
+        style = Styles.get(server)
+
+        if style.standalone:
+            if buffer:
+                yield buffer
+                buffer = []
+
+            yield [server]
+        else:
+            buffer.append(server)
+
+            if len(buffer) == n:
+                yield buffer
+                buffer = []
+
+    if buffer:
+        yield buffer
+
+
 async def resend_channel_messages(interaction: Optional[Interaction], channel_id: Optional[int] = None):
     """Resend channel messages"""
     channel = client.get_channel(channel_id if channel_id else interaction.channel.id)
-    servers = database.all_servers(channel_id=channel.id)
+    servers = await database.all_servers(channel_id=channel.id)
 
     try:
         await channel.purge(check=lambda m: m.author == client.user, before=interaction.created_at if interaction else None)
@@ -848,7 +875,7 @@ async def resend_channel_messages(interaction: Optional[Interaction], channel_id
 
         return False
 
-    async for chunks in to_chunks(servers, 10):
+    async for chunks in embeds_chunks(servers):
         try:
             message = await channel.send(embeds=[await Styles.get(server).embed() for server in chunks])
         except discord.Forbidden as e:
@@ -875,23 +902,27 @@ async def resend_channel_messages(interaction: Optional[Interaction], channel_id
 
         cache_message(message)
 
-    database.update_servers_message_id(servers)
+    await database.update_servers_message_id(servers)
 
     return True
 
 
 async def refresh_channel_messages(interaction: Interaction):
     """Edit channel messages"""
-    servers = database.all_servers(channel_id=interaction.channel.id)
-    await asyncio.gather(*[edit_message(chunks) for chunks in database.all_messages_servers(servers).values()])
+    servers = await database.all_servers(channel_id=interaction.channel.id)
+    grouped_servers = group_servers_by_message_id(servers)
+    await asyncio.gather(*[edit_message(chunks) for chunks in grouped_servers.values()])
 
 
-# Credits: https://stackoverflow.com/questions/312443/how-do-i-split-a-list-into-equally-sized-chunks
-async def to_chunks(lst, n):
-    """Yield successive n-sized chunks from lst."""
-    for i in range(0, len(lst), n):
-        await asyncio.sleep(0.001)
-        yield lst[i:i + n]
+def group_servers_by_message_id(servers: list[Server]) -> dict[int, list[Server]]:
+    """Group servers by message id"""
+    grouped_servers: dict[int, list[Server]] = {}
+
+    for server in servers:
+        if server.message_id:
+            grouped_servers.setdefault(server.message_id, []).append(server)
+
+    return grouped_servers
 # endregion
 
 
@@ -900,7 +931,7 @@ async def to_chunks(lst, n):
 async def tasks_query():
     """Query servers (Scheduled)"""
     # Pre query servers, some servers cannot be queried one by one
-    games_servers_count = database.games_servers_count()
+    games_servers_count = await database.count_servers_per_game()
     pre_query_tasks = [pre_query(protocol({})) for name, protocol in protocols.items() if protocol.pre_query_required and games_servers_count.get(name, 0) > 0]
     Logger.debug(f'Pre query servers: Tasks = {len(pre_query_tasks)}.')
     pre_query_results = await asyncio.gather(*pre_query_tasks)
@@ -910,44 +941,103 @@ async def tasks_query():
     Logger.debug(f'Pre query servers: Total = {len(pre_query_results)}, Success = {success}, Failed = {failed} ({percent}% fail)')
 
     # Query servers
-    distinct_servers = database.distinct_servers()
-    query_tasks = filtered_tasks(distinct_servers)
-    disabled = len(distinct_servers) - len(query_tasks)
-    Logger.debug(f'Query servers: Tasks = {len(query_tasks)} servers. {disabled} servers are disabled for queries.')
-    servers: List[Server] = []
+    servers = await database.all_servers()
+    distinct_servers = await get_distinct_servers(servers)
+    queried_servers = await query_servers(distinct_servers)
 
-    async for chunks in to_chunks(query_tasks, int(os.getenv('TASK_QUERY_CHUNK_SIZE', '50'))):
-        servers += await asyncio.gather(*chunks)
+    await database.update_servers(queried_servers)
+    await database.update_metrics(queried_servers)
 
-    database.update_servers(servers)
-
-    failed = sum(server.status is False for server in servers)
-    success = len(servers) - failed
-    percent = len(servers) > 0 and int(failed / len(servers) * 100) or 0
-    disabled_string = '' if disabled <= 0 else f' ({disabled} disabled)'
-    Logger.info(f'Query servers: Total = {len(servers)}, Success = {success}, Failed = {failed} ({percent}% fail){disabled_string}')
+    failed = sum(server.status is False for server in queried_servers)
+    success = len(queried_servers) - failed
+    percent = len(queried_servers) > 0 and int(failed / len(queried_servers) * 100) or 0
+    Logger.info(f'Query servers: Total = {len(queried_servers)}, Success = {success}, Failed = {failed} ({percent}% fail)')
 
     # Run the tasks after the server queries
     await asyncio.gather(tasks_send_alert(), tasks_edit_messages(), tasks_presence_update(tasks_query.current_loop))
 
 
-def filtered_tasks(servers: List[Server]):
-    days = int(os.getenv('TASK_QUERY_DISABLE_AFTER_DAYS', '0'))
+async def query_servers(distinct_servers: dict[tuple[str, str, int, str], list[Server]]):
+    query_tasks = [query_distinct_server(servers) for servers in distinct_servers.values()]
 
-    if days <= 0:
-        return [query_server(server) for server in servers]
+    async for chunks in to_chunks(query_tasks, int(os.getenv('TASK_QUERY_CHUNK_SIZE', '50'))):
+        await asyncio.gather(*chunks)
 
-    tasks = []
+    servers: list[Server] = []
+
+    for server_list in distinct_servers.values():
+        servers.extend(server_list)
+
+    return servers
+
+async def query_distinct_server(servers: list[Server]):
+    """Query server"""
+    server = servers[0]
+
+    try:
+        result = await gamedig.query(server)
+        status = True
+        Logger.debug(f'Query servers: ({server.game_id})[{server.address}:{server.query_port}] Success. Ping: {result.get("ping", -1)}ms')
+    except Exception as e:
+        result = None
+        status = False
+        Logger.debug(f'Query servers: ({server.game_id})[{server.address}:{server.query_port}] {type(e).__name__}: {e}')
 
     for server in servers:
-        raw = server.result.get('raw', {})
+        # Update the status
+        server.status = status
 
-        if '__offline_since' in raw and datetime.utcnow().timestamp() - int(raw['__offline_since']) >= timedelta(days=days).total_seconds():
-            continue
+        # Update the result
+        if status:
+            sent_offline_alert = bool(server.result['raw'].get('__sent_offline_alert', False))
+            server.result = result
+            server.result['raw']['__sent_offline_alert'] = sent_offline_alert
+        else:
+            raw = server.result.get('raw', {})
+            server.result['raw']['__fail_query_count'] = int(raw.get('__fail_query_count', '0')) + 1
+            timestamp = int(datetime.utcnow().timestamp())
+            server.result['raw']['__offline_since'] = min(int(raw.get('__offline_since', timestamp)), timestamp)
 
-        tasks.append(query_server(server))
 
-    return tasks
+async def get_hash_code(server: Server):
+    if server.game_id in ['discord', 'scpsl']:
+        host = server.address
+    else:
+        try:
+            host = await Socket.gethostbyname(server.address)
+        except Exception as e:
+            Logger.debug(f'Query servers: ({server.game_id})[{server.address}:{server.query_port}] {type(e).__name__}: {e}')
+            return None
+
+    return (server.game_id, host, server.query_port, str(server.query_extra))
+
+
+async def get_distinct_servers(servers: list[Server]) -> dict[tuple[str, str, int, str], list[Server]]:
+    distinct_dict: dict[tuple[str, str, int, str], list[Server]] = {}
+    failed_servers: list[Server] = []
+
+    # Create a list of tasks for all the DNS lookups
+    get_hash_code_tasks = [get_hash_code(server) for server in servers]
+
+    # Run all the tasks concurrently and wait for them to finish
+    hash_codes = await asyncio.gather(*get_hash_code_tasks)
+
+    for server, hash_code in zip(servers, hash_codes):
+        if hash_code is not None:
+            if hash_code not in distinct_dict:
+                distinct_dict[hash_code] = []
+
+            distinct_dict[hash_code].append(server)
+        else:
+            failed_servers.append(server)
+
+    total = len(servers)
+    distinct = len(distinct_dict)
+    duplicated = total - distinct
+    failed = len(failed_servers)
+    Logger.debug(f'Query servers: Total = {total}, Distinct = {distinct}, Duplicated = {duplicated}, DNS Failed = {failed}')
+
+    return distinct_dict
 
 
 async def pre_query(protocol: Protocol):
@@ -963,28 +1053,9 @@ async def pre_query(protocol: Protocol):
     return None
 
 
-async def query_server(server: Server):
-    """Query server"""
-    try:
-        sent_offline_alert = bool(server.result['raw'].get('__sent_offline_alert', False))
-        server.result = await gamedig.query(server)
-        server.result['raw']['__sent_offline_alert'] = sent_offline_alert
-        server.status = True
-        Logger.debug(f'Query servers: ({server.game_id})[{server.address}:{server.query_port}] Success. Ping: {server.result.get("ping", -1)}ms')
-    except Exception as e:
-        server.status = False
-        raw = server.result.get('raw', {})
-        server.result['raw']['__fail_query_count'] = int(raw.get('__fail_query_count', '0')) + 1
-        timestamp = int(datetime.utcnow().timestamp())
-        server.result['raw']['__offline_since'] = min(int(raw.get('__offline_since', timestamp)), timestamp)
-        Logger.debug(f'Query servers: ({server.game_id})[{server.address}:{server.query_port}] {type(e).__name__}: {e}')
-
-    return server
-
-
 async def tasks_send_alert():
     """Send alerts tasks"""
-    servers = database.all_servers()
+    all_servers = await database.all_servers()
 
     async def send_alert_webhook(server: Server):
         if server.status is False:
@@ -1009,19 +1080,21 @@ async def tasks_send_alert():
         else:
             return int(server.result['raw'].get('__fail_query_count', '0')) == fail_query_count
 
-    tasks = [send_alert_webhook(server) for server in servers if should_send_alert(server)]
+    servers = []
+    tasks = [send_alert_webhook(server) for server in all_servers if should_send_alert(server)]
 
     async for chunks in to_chunks(tasks, 25):
         servers += await asyncio.gather(*chunks)
 
-    database.update_servers(servers)
+    await database.update_servers(servers)
 
 
 async def tasks_fetch_messages():
-    messages_servers = database.all_messages_servers()
-    Logger.debug(f'Fetch messages: Tasks: {len(messages_servers)} messages')
+    servers = await database.all_servers()
+    grouped_servers = group_servers_by_message_id(servers)
+    Logger.debug(f'Fetch messages: Tasks: {len(grouped_servers)} messages')
 
-    tasks = [fetch_message(servers[0]) for servers in messages_servers.values()]
+    tasks = [fetch_message(servers[0]) for servers in grouped_servers.values()]
     results = []
 
     # Discord Rate limit: 50 requests per second
@@ -1038,16 +1111,17 @@ async def tasks_fetch_messages():
 
 async def tasks_edit_messages():
     """Edit messages tasks"""
-    messages_servers = database.all_messages_servers()
-    Logger.debug(f'Edit messages: Tasks: {len(messages_servers)} messages')
+    servers = await database.all_servers()
+    grouped_servers = group_servers_by_message_id(servers)
+    Logger.debug(f'Edit messages: Tasks: {len(grouped_servers)} messages')
 
-    tasks = [edit_message(servers) for servers in messages_servers.values()]
-    results: List[bool] = []
+    tasks = [edit_message(servers) for servers in grouped_servers.values()]
+    results: list[bool] = []
 
     # Discord Rate limit: 50 requests per second
     async for chunks in to_chunks(tasks, 25):
         start = datetime.now().timestamp()
-        results += await asyncio.gather(*chunks)
+        results += await asyncio.gather(*chunks, return_exceptions=True)
         time_used = datetime.now().timestamp() - start
         await asyncio.sleep(max(0, 1 - time_used))
 
@@ -1056,7 +1130,7 @@ async def tasks_edit_messages():
     Logger.info(f'Edit messages: Total = {len(results)}, Success = {success}, Failed = {failed} ({success and int(failed / len(results) * 100) or 0}% fail)')
 
 
-async def edit_message(servers: List[Server]):
+async def edit_message(servers: list[Server]):
     """Edit message"""
     if len(servers) <= 0:
         return True
@@ -1093,11 +1167,12 @@ async def tasks_presence_update(current_loop: int):
     elif advertise_type := env('APP_ADVERTISE_TYPE'):
         if advertise_type == AdvertiseType.server_count:
             # Display number of server monitoring
-            unique_servers = int(database.statistics()['unique_servers'])
+            statistics = await database.statistics()
+            unique_servers = statistics['unique_servers']
             name = f'{unique_servers} servers'
         elif advertise_type == AdvertiseType.individually:
             # Advertise online servers one by one
-            if servers := database.all_servers():
+            if servers := await database.all_servers():
                 online_servers = [server for server in servers if server.status]
 
                 if len(online_servers) > 0:
@@ -1105,7 +1180,7 @@ async def tasks_presence_update(current_loop: int):
                     name = Style.get_players_display_string(server) + f' {server.result["name"]}'
         elif advertise_type == AdvertiseType.player_stats:
             # Display servers players stats
-            if servers := database.all_servers():
+            if servers := await database.all_servers():
                 players, bots, maxplayers = map(sum, zip(*[Style.get_player_data(server) for server in servers]))
                 name = Style.to_players_string(players, bots, maxplayers)
 
