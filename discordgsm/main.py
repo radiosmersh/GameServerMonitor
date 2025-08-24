@@ -5,6 +5,7 @@ import json
 import os
 from datetime import datetime
 from enum import Enum
+import threading
 from typing import Optional
 
 import aiohttp
@@ -15,7 +16,7 @@ from discord import (AutoShardedClient, ButtonStyle, Embed,
 from discord.ext import tasks
 from discord.ui import Button, Modal, Select, TextInput, View
 from dotenv import load_dotenv
-from discordgsm.async_utils import to_chunks
+from discordgsm.async_utils import run_in_new_loop, to_chunks
 
 from discordgsm.environment import AdvertiseType, env
 from discordgsm.gamedig import GamedigGame
@@ -67,8 +68,8 @@ async def on_ready():
     await sync_commands(whitelist_guilds)
     await tasks_fetch_messages()
 
-    if not tasks_query.is_running():
-        tasks_query.start()
+    if not tasks_query_servers.is_running():
+        tasks_query_servers.start()
 
     if not cache_guilds.is_running() and env('WEB_API_ENABLE'):
         cache_guilds.start()
@@ -214,7 +215,7 @@ async def send_alert(server: Server, alert: Alert):
         content = None if not content else content
         username = 'Game Server Monitor Alert'
         avatar_url = 'https://avatars.githubusercontent.com/u/61296017'
-
+ 
         async with aiohttp.ClientSession() as session:
             webhook = Webhook.from_url(webhook_url, session=session)
             await webhook.send(content, username=username, avatar_url=avatar_url, embed=alert_embed(server, alert))
@@ -252,6 +253,9 @@ def query_server_modal(game: GamedigGame, locale: Locale):
         modal.add_item(query_extra['_api_key'])
         modal.remove_item(query_param['port'])
         query_param['port']._value = '0'
+    elif game['id'] == 'satisfactory':
+        query_extra['_token'] = TextInput(label='Application Token', placeholder='Server Application token')
+        modal.add_item(query_extra['_token'])
     elif game['id'] == 'gportal':
         query_extra['serverId'] = TextInput(label='GPORTAL server id')
         modal.add_item(query_extra['serverId'])
@@ -260,8 +264,18 @@ def query_server_modal(game: GamedigGame, locale: Locale):
         modal.remove_item(query_param['port'])
         query_param['port']._value = '0'
     elif game['id'] == 'teamspeak3':
-        query_extra['voice_port'] = TextInput(label='Voice Port', placeholder='Voice port', default=9987)
+        query_extra['voice_port'] = TextInput(label='Voice Port', placeholder='Voice port', default='9987')
         modal.add_item(query_extra['voice_port'])
+    elif game['id'] == 'palworld':
+        query_extra['api_port'] = TextInput(label='REST API Port', default='8213')
+        query_extra['admin_password'] = TextInput(label='Admin Password', placeholder='admin')
+        modal.add_item(query_extra['api_port'])
+        modal.add_item(query_extra['admin_password'])
+    elif game['id'] == 'tmnf':
+        query_extra['username'] = TextInput(label='Username', placeholder='Query Username', default="User")
+        query_extra['password'] = TextInput(label='Password',  placeholder='Query Password', default="User")
+        modal.add_item(query_extra['username'])
+        modal.add_item(query_extra['password'])
 
     return modal, query_param, query_extra
 
@@ -296,7 +310,6 @@ def query_server_modal_handler(interaction: Interaction, game: GamedigGame, is_a
                 return
             except database.ServerNotFoundError:
                 pass
-
         # Query the server
         try:
             result = await gamedig.run({**{'type': game_id}, **params})
@@ -927,40 +940,69 @@ def group_servers_by_message_id(servers: list[Server]) -> dict[int, list[Server]
 
 
 # region Application tasks
+_tasks_query_servers_thread: Optional[threading.Thread] = None
+exit_signal = threading.Event()
+
+
 @tasks.loop(seconds=max(15.0, env('TASK_QUERY_SERVER')))
-async def tasks_query():
+async def tasks_query_servers():
     """Query servers (Scheduled)"""
+    global _tasks_query_servers_thread
+
+    if _tasks_query_servers_thread is None:
+        _tasks_query_servers_thread = threading.Thread(target=run_in_new_loop, args=(__tasks_query_servers,))
+        _tasks_query_servers_thread.start()
+    else:
+        # Wait until _tasks_query_servers_thread stops
+        while _tasks_query_servers_thread.is_alive():
+            await asyncio.sleep(1)
+
+        servers = await database.all_servers()
+        await asyncio.gather(tasks_send_alert(servers), tasks_edit_messages(servers), tasks_presence_update(tasks_query_servers.current_loop))
+
+        _tasks_query_servers_thread = None
+
+
+async def __tasks_query_servers():
+    Logger.debug('Query servers: Thread Started')
+
     # Pre query servers, some servers cannot be queried one by one
     games_servers_count = await database.count_servers_per_game()
     pre_query_tasks = [pre_query(protocol({})) for name, protocol in protocols.items() if protocol.pre_query_required and games_servers_count.get(name, 0) > 0]
     Logger.debug(f'Pre query servers: Tasks = {len(pre_query_tasks)}.')
+    start_time = datetime.now().timestamp()
     pre_query_results = await asyncio.gather(*pre_query_tasks)
     failed = sum(result is False for result in pre_query_results)
     success = len(pre_query_results) - failed
     percent = len(pre_query_results) > 0 and int(failed / len(pre_query_results) * 100) or 0
-    Logger.debug(f'Pre query servers: Total = {len(pre_query_results)}, Success = {success}, Failed = {failed} ({percent}% fail)')
+    execution_time = datetime.now().timestamp() - start_time
+    Logger.debug(f'Pre query servers: Total = {len(pre_query_results)}, Success = {success}, Failed = {failed} ({percent}% fail), Time used = {execution_time:.2f} seconds')
 
     # Query servers
+    start_time = datetime.now().timestamp()
     servers = await database.all_servers()
     distinct_servers = await get_distinct_servers(servers)
     queried_servers = await query_servers(distinct_servers)
 
+    Logger.debug(f'Update servers: Tasks = {len(queried_servers)}.')
     await database.update_servers(queried_servers)
     await database.update_metrics(queried_servers)
 
     failed = sum(server.status is False for server in queried_servers)
     success = len(queried_servers) - failed
     percent = len(queried_servers) > 0 and int(failed / len(queried_servers) * 100) or 0
-    Logger.info(f'Query servers: Total = {len(queried_servers)}, Success = {success}, Failed = {failed} ({percent}% fail)')
-
-    # Run the tasks after the server queries
-    await asyncio.gather(tasks_send_alert(), tasks_edit_messages(), tasks_presence_update(tasks_query.current_loop))
+    execution_time = datetime.now().timestamp() - start_time
+    Logger.info(f'Query servers: Total = {len(queried_servers)}, Success = {success}, Failed = {failed} ({percent}% fail), Time used = {execution_time:.2f} seconds')
 
 
 async def query_servers(distinct_servers: dict[tuple[str, str, int, str], list[Server]]):
-    query_tasks = [query_distinct_server(servers) for servers in distinct_servers.values()]
+    query_tasks = [asyncio.create_task(query_distinct_server(servers)) for servers in distinct_servers.values()]
 
     async for chunks in to_chunks(query_tasks, int(os.getenv('TASK_QUERY_CHUNK_SIZE', '50'))):
+        if exit_signal.is_set():
+            Logger.debug(f'Exit signal received. Terminating server queries.')
+            break
+
         await asyncio.gather(*chunks)
 
     servers: list[Server] = []
@@ -969,6 +1011,7 @@ async def query_servers(distinct_servers: dict[tuple[str, str, int, str], list[S
         servers.extend(server_list)
 
     return servers
+
 
 async def query_distinct_server(servers: list[Server]):
     """Query server"""
@@ -1053,10 +1096,8 @@ async def pre_query(protocol: Protocol):
     return None
 
 
-async def tasks_send_alert():
+async def tasks_send_alert(servers: list[Server]):
     """Send alerts tasks"""
-    all_servers = await database.all_servers()
-
     async def send_alert_webhook(server: Server):
         if server.status is False:
             server.result['raw']['__sent_offline_alert'] = True
@@ -1080,19 +1121,20 @@ async def tasks_send_alert():
         else:
             return int(server.result['raw'].get('__fail_query_count', '0')) == fail_query_count
 
-    servers = []
-    tasks = [send_alert_webhook(server) for server in all_servers if should_send_alert(server)]
+    alerted_servers = []
+    tasks = [send_alert_webhook(server) for server in servers if should_send_alert(server)]
 
     async for chunks in to_chunks(tasks, 25):
-        servers += await asyncio.gather(*chunks)
+        alerted_servers += await asyncio.gather(*chunks)
 
-    await database.update_servers(servers)
+    await database.update_servers(alerted_servers)
 
 
 async def tasks_fetch_messages():
     servers = await database.all_servers()
     grouped_servers = group_servers_by_message_id(servers)
     Logger.debug(f'Fetch messages: Tasks: {len(grouped_servers)} messages')
+    start_time = datetime.now().timestamp()
 
     tasks = [fetch_message(servers[0]) for servers in grouped_servers.values()]
     results = []
@@ -1106,20 +1148,25 @@ async def tasks_fetch_messages():
 
     failed = sum(result is None for result in results)
     success = len(results) - failed
-    Logger.info(f'Fetch messages: Total = {len(results)}, Success = {success}, Failed = {failed} ({success and int(failed / len(results) * 100) or 0}% fail)')
+    execution_time = datetime.now().timestamp() - start_time
+    Logger.info(f'Fetch messages: Total = {len(results)}, Success = {success}, Failed = {failed} ({success and int(failed / len(results) * 100) or 0}% fail), Time used = {execution_time:.2f} seconds')
 
 
-async def tasks_edit_messages():
+async def tasks_edit_messages(servers: list[Server]):
     """Edit messages tasks"""
-    servers = await database.all_servers()
     grouped_servers = group_servers_by_message_id(servers)
     Logger.debug(f'Edit messages: Tasks: {len(grouped_servers)} messages')
+    start_time = datetime.now().timestamp()
 
     tasks = [edit_message(servers) for servers in grouped_servers.values()]
     results: list[bool] = []
 
     # Discord Rate limit: 50 requests per second
     async for chunks in to_chunks(tasks, 25):
+        if exit_signal.is_set():
+            Logger.debug('Exit signal received. Terminating message editing tasks.')
+            break
+
         start = datetime.now().timestamp()
         results += await asyncio.gather(*chunks, return_exceptions=True)
         time_used = datetime.now().timestamp() - start
@@ -1127,7 +1174,8 @@ async def tasks_edit_messages():
 
     failed = sum(result is False for result in results)
     success = len(results) - failed
-    Logger.info(f'Edit messages: Total = {len(results)}, Success = {success}, Failed = {failed} ({success and int(failed / len(results) * 100) or 0}% fail)')
+    execution_time = datetime.now().timestamp() - start_time
+    Logger.info(f'Edit messages: Total = {len(results)}, Success = {success}, Failed = {failed} ({success and int(failed / len(results) * 100) or 0}% fail), Time used = {execution_time:.2f} seconds')
 
 
 async def edit_message(servers: list[Server]):

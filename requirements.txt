@@ -1,12 +1,12 @@
-aiohttp==3.9.3
-backports.zoneinfo==0.2.1;python_version<"3.9"
-discord.py==2.3.2
-flask[async]==3.0.2
-gunicorn==21.2.0
-opengsq==3.0.10
-psycopg2-binary==2.9.9
-pymongo==4.6.1
+aiohttp==3.11.16
+audioop-lts==0.2.1; python_version>="3.13"
+discord.py==2.5.2
+flask[async]==3.1.0
+gunicorn==23.0.0
+opengsq==3.3.0
+psycopg2-binary==2.9.10
+pymongo==4.11.3
 python-dotenv==1.0.1
-pywin32==306;platform_system=="Windows"
-typing-extensions==4.8.0;python_version<"3.10"
-tzdata==2023.4
+pywin32==310;platform_system=="Windows"
+typing-extensions==4.12.2
+tzdata==2025.1

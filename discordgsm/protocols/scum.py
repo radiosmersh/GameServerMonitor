@@ -1,6 +1,9 @@
+import os
+import time
 from typing import TYPE_CHECKING
 
-import opengsq
+import aiohttp
+
 from opengsq.protocol_socket import Socket
 
 from discordgsm.protocols.protocol import Protocol
@@ -10,40 +13,34 @@ if TYPE_CHECKING:
 
 
 class Scum(Protocol):
-    pre_query_required = True
     name = "scum"
-    master_servers = None
-
-    async def pre_query(self):
-        master_servers = await opengsq.Scum.query_master_servers()
-        Scum.master_servers = {
-            f"{server.ip}:{server.port}": server for server in master_servers
-        }
 
     async def query(self):
-        if Scum.master_servers is None:
-            await self.pre_query()
-
         host, port = str(self.kv["host"]), int(str(self.kv["port"]))
         ip = await Socket.gethostbyname(host)
-        host_address = f"{ip}:{port}"
 
-        if host_address not in Scum.master_servers:
-            raise Exception("Server not found")
+        base_url = os.getenv('OPENGSQ_MASTER_SERVER_URL', 'https://master-server.opengsq.com/').rstrip('/')
+        url = f"{base_url}/scum/search?host={ip}&port={port}"
+        start = time.time()
 
-        server = Scum.master_servers[host_address]
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                response.raise_for_status()
+                data: dict = await response.json()
+                ping = int((time.time() - start) * 1000)
+
         result: GamedigResult = {
-            "name": server.name,
+            "name": data.get("name", ""),
             "map": "",
-            "password": server.password,
-            "numplayers": server.num_players,
+            "password": data.get("password", False),
+            "numplayers": data.get("num_players", 0),
             "numbots": 0,
-            "maxplayers": server.max_players,
+            "maxplayers": data.get("max_players", 0),
             "players": None,
             "bots": None,
-            "connect": f"{host}:{server.port - 2}",
-            "ping": 0,
-            "raw": server.__dict__,
+            "connect": f"{host}:{port - 2}",
+            "ping": ping,
+            "raw": data,
         }
 
         return result
