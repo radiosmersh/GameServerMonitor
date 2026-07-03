@@ -11,6 +11,17 @@ if TYPE_CHECKING:
 
 class GameSpy3(Protocol):
     name = "gamespy3"
+    map_size_labels = {
+        16: "Small",
+        32: "Medium",
+        64: "Large",
+        128: "Tiny",
+    }
+
+    @classmethod
+    def map_size_label(cls, value):
+        map_size = int(value)
+        return cls.map_size_labels.get(map_size, map_size)
 
     async def query(self):
         host, port = str(self.kv["host"]), int(str(self.kv["port"]))
@@ -23,7 +34,7 @@ class GameSpy3(Protocol):
         result: GamedigResult = {
             "name": info.get("hostname", ""),
             "map": info.get("mapname", info.get("map", "")),
-            "mapsize": int(info["bf2_mapsize"]),
+            "mapsize": self.map_size_label(info["bf2_mapsize"]),
             "password": int(info.get("password", "0")) != 0,
             "numplayers": int(info["numplayers"]),
             "numbots": 0,
