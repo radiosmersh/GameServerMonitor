@@ -207,7 +207,7 @@ class Style(ABC):
 
         if not data['shorturl']:
             raise Exception(data['message'])
-        
+
         name = t(f"embed.field.join_server", self.locale)
         embed.add_field(name=name, value=data['shorturl'])
 
