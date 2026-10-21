@@ -66,7 +66,7 @@ class Medium(Style):
             self.add_players_field(embed)
             embed.add_field(name="*​*", value="*​*", inline=True)
 
-        # await self.add_join_url_field(embed)
+        await self.add_join_url_field(embed)
 
         self.set_image_and_thumbnail(embed)
         self.set_footer(embed)
