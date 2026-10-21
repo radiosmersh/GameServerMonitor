@@ -188,28 +188,50 @@ class Style(ABC):
             name=name, value=self.get_players_display_string(self.server), inline=True
         )
 
-    async def add_join_url_field(self, embed: Embed):
+async def add_join_url_field(self, embed: Embed):
+    game_port = gamedig.game_port(self.server.result)
+    join_url = f"fh2://{self.server.address}:{game_port}"
 
-        game_port = gamedig.game_port(self.server.result)
-        join_url = f"fh2://{self.server.address}:{game_port}"
+    api_url = os.getenv("SLITE_API_URL", "").rstrip("/")
+    api_token = os.getenv("SLITE_API_TOKEN", "")
 
-        api_url = os.getenv('YOURLS_API_URL', '')
-        api_signature = os.getenv('YOURLS_API_SIGNATURE', '')
+    if not api_url or not api_token:
+        return
 
-        if not api_url or not api_signature:
-            return
+    endpoint = f"{api_url}/api/link/upsert"
 
-        url = f"{(api_url)}?signature={api_signature}&action=shorturl&format=json&url={join_url}"
+    payload = {
+        "url": join_url,
+        "slug": f"fh2-{self.server.address.replace('.', '-')}-{game_port}",
+    }
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
-                data = await response.json()
+    timeout = aiohttp.ClientTimeout(total=10)
 
-        if not data['shorturl']:
-            raise Exception(data['message'])
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.post(
+            endpoint,
+            headers=headers,
+            json=payload,
+        ) as response:
+            data = await response.json(content_type=None)
 
-        name = t(f"embed.field.join_server", self.locale)
-        embed.add_field(name=name, value=data['shorturl'])
+            if response.status not in (200, 201):
+                raise Exception(
+                    f"Slite API error ({response.status}): "
+                    f"{data.get('message', data)}"
+                )
+
+    link = data.get("link", {})
+    slug = link.get("slug")
+
+    if not slug:
+        raise Exception(f"Slite did not return a link slug: {data}")
+
+    short_url = f"{api_url}/{slug}"
+
+    name = t("embed.field.join_server", self.locale)
+    embed.add_field(name=name, value=short_url)
+
 
     def set_footer(self, embed: Embed):
         advertisement = "📺 Game Server Monitor"
